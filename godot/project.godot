@@ -1,0 +1,7 @@
+; Minimal project file for validating the Void Shipwright Godot add-on.
+
+config_version=5
+
+[application]
+config/name="Void Shipwright Importer Harness"
+config/features=PackedStringArray("4.0")

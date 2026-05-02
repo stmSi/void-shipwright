@@ -1,0 +1,259 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://void-shipwright.local/schemas/ship_metadata.schema.json",
+  "title": "Void Shipwright Ship Metadata",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "generator",
+    "ship_id",
+    "role",
+    "faction",
+    "seed",
+    "variant",
+    "units",
+    "source_axis",
+    "godot_axis",
+    "required_contract",
+    "meshes",
+    "sockets",
+    "collision_proxies",
+    "damage_zones",
+    "vfx_markers",
+    "camera_markers",
+    "target_markers"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "generator": {
+      "type": "string",
+      "const": "Void Shipwright"
+    },
+    "ship_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]+$"
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "player",
+        "enemy",
+        "ally",
+        "neutral",
+        "civilian",
+        "boss",
+        "drone",
+        "background_traffic"
+      ]
+    },
+    "faction": {
+      "type": "string",
+      "enum": [
+        "pirate_clan",
+        "sector_navy",
+        "trade_consortium",
+        "mining_guild",
+        "smuggler_network",
+        "corporate_security",
+        "ancient_relic",
+        "independent"
+      ]
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "variant": {
+      "type": "string",
+      "minLength": 1
+    },
+    "units": {
+      "type": "string",
+      "const": "meters"
+    },
+    "source_axis": {
+      "$ref": "#/$defs/axis_map"
+    },
+    "godot_axis": {
+      "$ref": "#/$defs/axis_map"
+    },
+    "required_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sockets", "damage_zones", "collision_proxies"],
+      "properties": {
+        "sockets": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "damage_zones": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "collision_proxies": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    },
+    "meshes": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/mesh_entry"}
+    },
+    "sockets": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/socket_entry"}
+    },
+    "collision_proxies": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/collision_entry"}
+    },
+    "damage_zones": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/damage_entry"}
+    },
+    "vfx_markers": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/vfx_entry"}
+    },
+    "camera_markers": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/camera_entry"}
+    },
+    "target_markers": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/target_entry"}
+    }
+  },
+  "$defs": {
+    "axis_map": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["forward", "up", "right"],
+      "properties": {
+        "forward": {"type": "string"},
+        "up": {"type": "string"},
+        "right": {"type": "string"}
+      }
+    },
+    "transform_entry": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["name", "position", "rotation_euler", "scale"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+$"
+        },
+        "position": {"$ref": "#/$defs/vector3"},
+        "rotation_euler": {"$ref": "#/$defs/vector3"},
+        "scale": {"$ref": "#/$defs/vector3"}
+      }
+    },
+    "mesh_entry": {
+      "allOf": [
+        {"$ref": "#/$defs/transform_entry"},
+        {
+          "type": "object",
+          "required": ["mesh_role"],
+          "properties": {
+            "name": {"pattern": "^MESH_"},
+            "mesh_role": {"type": "string"}
+          }
+        }
+      ]
+    },
+    "socket_entry": {
+      "allOf": [
+        {"$ref": "#/$defs/transform_entry"},
+        {
+          "type": "object",
+          "required": ["socket_type"],
+          "properties": {
+            "name": {"pattern": "^SOCKET_"},
+            "socket_type": {
+              "type": "string",
+              "enum": ["weapon", "missile", "engine", "camera", "target", "loot", "boarding", "generic"]
+            }
+          }
+        }
+      ]
+    },
+    "collision_entry": {
+      "allOf": [
+        {"$ref": "#/$defs/transform_entry"},
+        {
+          "type": "object",
+          "required": ["shape", "disabled_by_default"],
+          "properties": {
+            "name": {"pattern": "^COLLISION_"},
+            "shape": {"type": "string", "enum": ["box"]},
+            "disabled_by_default": {"type": "boolean"}
+          }
+        }
+      ]
+    },
+    "damage_entry": {
+      "allOf": [
+        {"$ref": "#/$defs/transform_entry"},
+        {
+          "type": "object",
+          "required": ["zone"],
+          "properties": {
+            "name": {"pattern": "^DAMAGE_"},
+            "zone": {"type": "string"}
+          }
+        }
+      ]
+    },
+    "vfx_entry": {
+      "allOf": [
+        {"$ref": "#/$defs/transform_entry"},
+        {
+          "type": "object",
+          "required": ["vfx_type"],
+          "properties": {
+            "name": {"pattern": "^VFX_"},
+            "vfx_type": {"type": "string"}
+          }
+        }
+      ]
+    },
+    "camera_entry": {
+      "allOf": [
+        {"$ref": "#/$defs/transform_entry"},
+        {
+          "type": "object",
+          "required": ["camera_type"],
+          "properties": {
+            "name": {"pattern": "^CAMERA_"},
+            "camera_type": {"type": "string"}
+          }
+        }
+      ]
+    },
+    "target_entry": {
+      "allOf": [
+        {"$ref": "#/$defs/transform_entry"},
+        {
+          "type": "object",
+          "required": ["target_type"],
+          "properties": {
+            "name": {"pattern": "^TARGET_"},
+            "target_type": {"type": "string"}
+          }
+        }
+      ]
+    },
+    "vector3": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {"type": "number"}
+    }
+  }
+}
