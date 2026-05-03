@@ -46,15 +46,21 @@ Export the generated mesh collection to a Godot-supported 3D format, then keep t
 `Ship Type` selects the visual/equipment archetype:
 
 - `Light Raider`: sharp attack craft.
-- `Missile Corvette`: broad corvette with missile pod banks, ordnance cells, stabilizers, and auxiliary modules.
-- `Interceptor`: lean pursuit ship with larger engines and lance details.
-- `Gunship`: wider weapons platform with side cannons.
-- `Freighter`: utility massing with cargo pods.
+- `Missile Corvette`: broad armored hull, blunt prow armor, ordnance deck, missile pod banks, stabilizers, and auxiliary modules.
+- `Interceptor`: narrow needle hull, swept wings, canards, oversized engines, and a centerline lance.
+- `Gunship`: broad armored hull, stub wings, weapon sponsons, heavy nose cannons, and side cannons.
+- `Freighter`: long truss spine, cargo blocks, side rails, bridge cab, and rear engine tug.
 
 `Hull Profile`, `Hull Length`, `Hull Width`, `Hull Height`, `Wing Span`, and `Engine Scale` control silhouette.
 
 `Weapon Density`, `Missile Density`, `Cargo Density`, and `Asymmetry` control visible ship systems. Missile corvettes respond strongly to `Missile Density`; higher values add more pod banks and more cells per bank.
 
 `Armor Density`, `Greeble Density`, `Decal Density`, `Wear Amount`, and `Glow Strength` control surface finish and procedural texture intensity.
+
+`Material Style` selects the procedural metal family. Current styles are `Gunmetal`, `Worn Steel`, `Dark Titanium`, `Rusted Iron`, `Oxidized Copper`, and `Painted Composite`.
+
+`Rust`, `Scratches`, and `Texture Scale` control oxide coverage, bright scratched edges, object-space grain, Voronoi corrosion patches, pitted roughness breakup, directional hairline scratches, and bump strength in the generated Blender materials.
+
+Generated ships use separate procedural material families per part role instead of one shared hull material. `Material Style` controls the primary body shell, while wing skins, livery edges, top armor, dark inset armor, underbody structure, heat-stained engine shells, blued weapon metal, cargo pods, system bays, panel seams, chipped edge wear, and painted decals use role-specific internal profiles so the model reads like layered hard-surface construction.
 
 Enable `Custom Colors` only when the faction palette should be overridden by the primary, accent, and emissive color pickers.

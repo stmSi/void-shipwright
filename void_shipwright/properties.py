@@ -5,7 +5,7 @@ from __future__ import annotations
 import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, FloatVectorProperty, IntProperty, PointerProperty, StringProperty
 
-from .constants import VALID_FACTIONS, VALID_HULL_PROFILES, VALID_ROLES, VALID_SHIP_TYPES
+from .constants import VALID_FACTIONS, VALID_HULL_PROFILES, VALID_MATERIAL_STYLES, VALID_ROLES, VALID_SHIP_TYPES
 
 
 def _enum_items(values: tuple[str, ...]) -> list[tuple[str, str, str]]:
@@ -34,8 +34,18 @@ SHIP_TYPE_LABELS = {
     "freighter": ("Freighter", "Utility hull with cargo pods and civilian massing"),
 }
 
+MATERIAL_STYLE_LABELS = {
+    "gunmetal": ("Gunmetal", "Dark blued metal with oily wear and sharp bright edges"),
+    "worn_steel": ("Worn Steel", "Brighter bare steel with brushed grain and scratches"),
+    "dark_titanium": ("Dark Titanium", "Low-reflectance military alloy with subtle blue-gray variation"),
+    "rusted_iron": ("Rusted Iron", "Aged industrial iron with oxide patches and rough corrosion"),
+    "oxidized_copper": ("Oxidized Copper", "Warm copper/bronze with green-blue oxidation in recesses"),
+    "painted_composite": ("Painted Composite", "Painted armor over metal with exposed chipped edges"),
+}
+
 HULL_PROFILES = tuple((value, *HULL_PROFILE_LABELS[value]) for value in VALID_HULL_PROFILES)
 SHIP_TYPES = tuple((value, *SHIP_TYPE_LABELS[value]) for value in VALID_SHIP_TYPES)
+MATERIAL_STYLES = tuple((value, *MATERIAL_STYLE_LABELS[value]) for value in VALID_MATERIAL_STYLES)
 
 
 class VoidShipwrightSettings(bpy.types.PropertyGroup):
@@ -164,6 +174,33 @@ class VoidShipwrightSettings(bpy.types.PropertyGroup):
         description="Intensity of teal engines, windows, and light strips",
         default=1.2,
         min=0.0,
+        max=3.0,
+    )
+    material_style: EnumProperty(
+        name="Material Style",
+        description="Procedural metal texture family",
+        items=MATERIAL_STYLES,
+        default="gunmetal",
+    )
+    rust_amount: FloatProperty(
+        name="Rust",
+        description="Amount of rust, oxidation, and brown/green corrosion in procedural metal",
+        default=0.22,
+        min=0.0,
+        max=1.0,
+    )
+    scratch_amount: FloatProperty(
+        name="Scratches",
+        description="Amount of bright scratched metal and high-frequency brushed wear",
+        default=0.55,
+        min=0.0,
+        max=1.0,
+    )
+    texture_scale: FloatProperty(
+        name="Texture Scale",
+        description="Scale of procedural metal grain, rust patches, and panel noise",
+        default=1.0,
+        min=0.25,
         max=3.0,
     )
     weapon_density: FloatProperty(

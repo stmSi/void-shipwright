@@ -48,6 +48,15 @@ VALID_DETAIL_LEVELS = (
     "hero",
 )
 
+VALID_MATERIAL_STYLES = (
+    "gunmetal",
+    "worn_steel",
+    "dark_titanium",
+    "rusted_iron",
+    "oxidized_copper",
+    "painted_composite",
+)
+
 OBJECT_PREFIXES = (
     "MESH_",
     "SOCKET_",

@@ -48,6 +48,10 @@ class VOID_SHIPWRIGHT_PT_generator(bpy.types.Panel):
         layout.prop(settings, "decal_density", slider=True)
         layout.prop(settings, "wear_amount", slider=True)
         layout.prop(settings, "glow_strength", slider=True)
+        layout.prop(settings, "material_style")
+        layout.prop(settings, "rust_amount", slider=True)
+        layout.prop(settings, "scratch_amount", slider=True)
+        layout.prop(settings, "texture_scale", slider=True)
 
         layout.separator()
         layout.label(text="Palette")

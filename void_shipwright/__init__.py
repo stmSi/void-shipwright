@@ -5,7 +5,7 @@ from __future__ import annotations
 bl_info = {
     "name": "Void Shipwright",
     "author": "Void Shipwright Contributors",
-    "version": (0, 2, 0),
+    "version": (0, 2, 5),
     "blender": (4, 0, 0),
     "location": "View3D > Sidebar > Void Shipwright",
     "description": "Procedural Godot-compatible spaceship asset generator",

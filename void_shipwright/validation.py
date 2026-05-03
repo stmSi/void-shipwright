@@ -5,7 +5,15 @@ from __future__ import annotations
 import re
 from typing import Iterable
 
-from .constants import OBJECT_PREFIXES, VALID_DETAIL_LEVELS, VALID_FACTIONS, VALID_HULL_PROFILES, VALID_ROLES, VALID_SHIP_TYPES
+from .constants import (
+    OBJECT_PREFIXES,
+    VALID_DETAIL_LEVELS,
+    VALID_FACTIONS,
+    VALID_HULL_PROFILES,
+    VALID_MATERIAL_STYLES,
+    VALID_ROLES,
+    VALID_SHIP_TYPES,
+)
 
 _GODOT_SAFE_NAME = re.compile(r"^[A-Za-z0-9_-]+$")
 
@@ -42,6 +50,12 @@ def validate_detail_level(detail_level: str) -> str:
     if detail_level not in VALID_DETAIL_LEVELS:
         raise ValidationError(f"Unsupported detail level: {detail_level!r}")
     return detail_level
+
+
+def validate_material_style(material_style: str) -> str:
+    if material_style not in VALID_MATERIAL_STYLES:
+        raise ValidationError(f"Unsupported material style: {material_style!r}")
+    return material_style
 
 
 def validate_seed(seed: int) -> int:
