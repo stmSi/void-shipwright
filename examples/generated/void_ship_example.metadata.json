@@ -77,10 +77,10 @@
     {"name": "SOCKET_Weapon_Right_01", "position": [2.4, -0.4, 0.0], "rotation_euler": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0], "socket_type": "weapon"}
   ],
   "collision_proxies": [
-    {"name": "COLLISION_Bridge-colonly", "position": [0.0, -1.2, 0.61], "rotation_euler": [0.0, 0.0, 0.0], "scale": [0.7, 0.96, 0.29], "shape": "box", "disabled_by_default": false},
-    {"name": "COLLISION_Cargo-colonly", "position": [0.0, 0.96, -0.13], "rotation_euler": [0.0, 0.0, 0.0], "scale": [1.1, 2.56, 0.45], "shape": "box", "disabled_by_default": false},
-    {"name": "COLLISION_Engine-colonly", "position": [0.0, 3.28, 0.0], "rotation_euler": [0.0, 0.0, 0.0], "scale": [1.7, 0.96, 0.38], "shape": "box", "disabled_by_default": false},
-    {"name": "COLLISION_Hull-colonly", "position": [0.0, 0.0, 0.0], "rotation_euler": [0.0, 0.0, 0.0], "scale": [1.5, 3.84, 0.8], "shape": "box", "disabled_by_default": false}
+    {"name": "COLLISION_Bridge-colonly", "position": [0.0, -1.2, 0.61], "rotation_euler": [0.0, 0.0, 0.0], "scale": [0.7, 0.96, 0.29], "shape": "box", "size": [1.4, 1.92, 0.58], "disabled_by_default": false},
+    {"name": "COLLISION_Cargo-colonly", "position": [0.0, 0.96, -0.13], "rotation_euler": [0.0, 0.0, 0.0], "scale": [1.1, 2.56, 0.45], "shape": "box", "size": [2.2, 5.12, 0.9], "disabled_by_default": false},
+    {"name": "COLLISION_Engine-colonly", "position": [0.0, 3.28, 0.0], "rotation_euler": [0.0, 0.0, 0.0], "scale": [1.7, 0.96, 0.38], "shape": "box", "size": [3.4, 1.92, 0.76], "disabled_by_default": false},
+    {"name": "COLLISION_Hull-colonly", "position": [0.0, 0.0, 0.0], "rotation_euler": [0.0, 0.0, 0.0], "scale": [1.5, 3.84, 0.8], "shape": "box", "size": [3.0, 7.68, 1.6], "disabled_by_default": false}
   ],
   "damage_zones": [
     {"name": "DAMAGE_Bridge", "position": [0.0, -1.2, 0.74], "rotation_euler": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0], "zone": "Bridge"},

@@ -192,6 +192,7 @@
           "properties": {
             "name": {"pattern": "^COLLISION_"},
             "shape": {"type": "string", "enum": ["box"]},
+            "size": {"$ref": "#/$defs/vector3"},
             "disabled_by_default": {"type": "boolean"}
           }
         }

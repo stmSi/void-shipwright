@@ -18,7 +18,7 @@ The canonical JSON schema is `schemas/ship_metadata.schema.json`. Example output
 
 - `meshes`: Visual mesh objects.
 - `sockets`: Gameplay attach points for weapons, engines, cameras, targeting, loot, and boarding.
-- `collision_proxies`: Box collision source objects.
+- `collision_proxies`: Box collision source objects. Collision entries include `size` as the full box dimensions Godot should assign to `BoxShape3D.size`; `scale` remains the Blender object transform scale.
 - `damage_zones`: Damage routing markers.
 - `vfx_markers`: VFX attach points.
 - `camera_markers`: Camera rig helper points.

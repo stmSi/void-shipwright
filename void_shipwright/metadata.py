@@ -24,6 +24,49 @@ def _vector3(values: Iterable[float]) -> list[float]:
     return [_round_float(value) for value in values]
 
 
+def _raw_vector3(values: Any) -> list[float] | None:
+    if values is None:
+        return None
+
+    try:
+        vector = list(values)
+    except TypeError:
+        return None
+
+    if len(vector) < 3:
+        return None
+
+    try:
+        return [float(vector[0]), float(vector[1]), float(vector[2])]
+    except (TypeError, ValueError):
+        return None
+
+
+def _object_box_size(obj: Any) -> list[float]:
+    scale = _raw_vector3(getattr(obj, "scale", None)) or [1.0, 1.0, 1.0]
+    bounds = getattr(obj, "bound_box", None)
+    if bounds is not None:
+        try:
+            corners = [tuple(corner) for corner in bounds]
+        except TypeError:
+            corners = []
+
+        if corners:
+            local_size = [
+                max(corner[index] for corner in corners) - min(corner[index] for corner in corners)
+                for index in range(3)
+            ]
+            size = [local_size[index] * abs(scale[index]) for index in range(3)]
+            if any(value > 0.0001 for value in size):
+                return _vector3(size)
+
+    dimensions = _raw_vector3(getattr(obj, "dimensions", None))
+    if dimensions is not None and any(abs(value) > 0.0001 for value in dimensions):
+        return _vector3(abs(value) for value in dimensions)
+
+    return _vector3(abs(value) * 2.0 for value in scale)
+
+
 def _socket_type(name: str) -> str:
     if name.startswith("SOCKET_Weapon_"):
         return "weapon"
@@ -78,6 +121,7 @@ def collect_scene_objects(objects: Iterable[Any]) -> dict[str, list[dict[str, An
             sockets.append(entry)
         elif obj.name.startswith("COLLISION_"):
             entry["shape"] = "box"
+            entry["size"] = _object_box_size(obj)
             entry["disabled_by_default"] = False
             collisions.append(entry)
         elif obj.name.startswith("DAMAGE_"):
