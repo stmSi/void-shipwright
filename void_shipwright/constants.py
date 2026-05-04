@@ -57,6 +57,11 @@ VALID_MATERIAL_STYLES = (
     "painted_composite",
 )
 
+VALID_TEXTURE_WORKFLOWS = (
+    "painted",
+    "procedural_shader",
+)
+
 OBJECT_PREFIXES = (
     "MESH_",
     "SOCKET_",

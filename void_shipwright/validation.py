@@ -13,6 +13,7 @@ from .constants import (
     VALID_MATERIAL_STYLES,
     VALID_ROLES,
     VALID_SHIP_TYPES,
+    VALID_TEXTURE_WORKFLOWS,
 )
 
 _GODOT_SAFE_NAME = re.compile(r"^[A-Za-z0-9_-]+$")
@@ -56,6 +57,20 @@ def validate_material_style(material_style: str) -> str:
     if material_style not in VALID_MATERIAL_STYLES:
         raise ValidationError(f"Unsupported material style: {material_style!r}")
     return material_style
+
+
+def validate_texture_workflow(texture_workflow: str) -> str:
+    if texture_workflow not in VALID_TEXTURE_WORKFLOWS:
+        raise ValidationError(f"Unsupported texture workflow: {texture_workflow!r}")
+    return texture_workflow
+
+
+def validate_texture_resolution(texture_resolution: int) -> int:
+    if not isinstance(texture_resolution, int):
+        raise ValidationError("Texture resolution must be an integer.")
+    if texture_resolution < 64 or texture_resolution > 1024:
+        raise ValidationError("Texture resolution must be between 64 and 1024.")
+    return texture_resolution
 
 
 def validate_seed(seed: int) -> int:

@@ -8,6 +8,7 @@ Void Shipwright is a Blender 4 add-on that generates procedural spaceship source
 - `void_shipwright/properties.py` defines panel settings.
 - `void_shipwright/operators.py` exposes generate and metadata export actions.
 - `void_shipwright/geometry.py` creates deterministic meshes, sockets, proxies, and markers.
+- `void_shipwright/textures.py` creates deterministic generated texture-paint maps for exportable materials.
 - `void_shipwright/metadata.py` extracts generated objects into JSON.
 - `void_shipwright/validation.py` validates roles, factions, seeds, and Godot-safe names.
 - `void_shipwright/constants.py` is the shared contract for roles, factions, prefixes, and required markers.
@@ -55,12 +56,18 @@ Export the generated mesh collection to a Godot-supported 3D format, then keep t
 
 `Weapon Density`, `Missile Density`, `Cargo Density`, and `Asymmetry` control visible ship systems. Missile corvettes respond strongly to `Missile Density`; higher values add more pod banks and more cells per bank.
 
-`Armor Density`, `Greeble Density`, `Decal Density`, `Wear Amount`, and `Glow Strength` control surface finish and procedural texture intensity.
+`Decal Density`, `Wear Amount`, and `Glow Strength` control surface finish, texture-painted livery, chipped edges, and emissive detail. Extra armor shell, top panel, accent spine, panel seam, armor tile, micro vent, raider spike, greeble, wing decal, hull livery stripe, and faction insignia mesh layers are not generated; the add-on keeps surface complexity in nose chevrons, scuffs, lighting strips, and generated texture paint.
 
-`Material Style` selects the procedural metal family. Current styles are `Gunmetal`, `Worn Steel`, `Dark Titanium`, `Rusted Iron`, `Oxidized Copper`, and `Painted Composite`.
+`Texture Workflow` controls how ship surface materials are built. `Painted Textures` is the default and creates packed Base Color, Roughness, and Normal image maps for each part family. `Procedural Shader` keeps the older Blender shader-node workflow available for comparison.
 
-`Rust`, `Scratches`, and `Texture Scale` control oxide coverage, bright scratched edges, object-space grain, Voronoi corrosion patches, pitted roughness breakup, directional hairline scratches, and bump strength in the generated Blender materials.
+`Texture Resolution` controls the generated image map size per material family. The default is `64` for responsive iteration. Higher values cost more Blender memory and generation time, but export cleaner texture detail to Godot. Painted material maps are generated lazily only for material families used by the current ship, and identical seed/settings reuse existing maps.
 
-Generated ships use separate procedural material families per part role instead of one shared hull material. `Material Style` controls the primary body shell, while wing skins, livery edges, top armor, dark inset armor, underbody structure, heat-stained engine shells, blued weapon metal, cargo pods, system bays, panel seams, chipped edge wear, and painted decals use role-specific internal profiles so the model reads like layered hard-surface construction.
+`Material Style` selects the metal family. Current styles are `Gunmetal`, `Worn Steel`, `Dark Titanium`, `Rusted Iron`, `Oxidized Copper`, and `Painted Composite`.
+
+`Rust`, `Scratches`, and `Texture Scale` control oxide coverage, bright scratched edges, painted panel-line frequency, sparse angular corrosion, roughness breakup, chipped micro scratches, and normal-map strength. The painted texture workflow avoids broad directional bands and brown base-color grain so surfaces read as painted or treated metal rather than wood.
+
+Generated ships use separate material families per part role instead of one shared hull material. `Material Style` controls the primary body shell, while wing skins, livery edges, top armor, dark inset armor, underbody structure, heat-stained engine shells, blued weapon metal, cargo pods, system bays, dark inset detail, chipped edge wear, and painted trim use role-specific internal profiles so the model reads like layered hard-surface construction.
+
+Every generated mesh receives a `VS_PaintedUV` box-projected UV map so generated image textures can export through glTF/GLB and remain usable in Godot. Painted panel lines and chips are texture data, not extra floating mesh layers.
 
 Enable `Custom Colors` only when the faction palette should be overridden by the primary, accent, and emissive color pickers.

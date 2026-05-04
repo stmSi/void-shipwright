@@ -5,7 +5,7 @@ from __future__ import annotations
 import random
 from math import cos, pi, sin
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 import bpy
 from mathutils import Vector
@@ -20,7 +20,8 @@ from .constants import (
     ROLE_PROFILES,
 )
 from .metadata import build_metadata
-from .validation import validate_detail_level, validate_faction, validate_hull_profile, validate_material_style, validate_role, validate_seed, validate_ship_type
+from .textures import painted_metal_material
+from .validation import validate_detail_level, validate_faction, validate_hull_profile, validate_material_style, validate_role, validate_seed, validate_ship_type, validate_texture_resolution, validate_texture_workflow
 
 
 @dataclass(frozen=True)
@@ -40,11 +41,11 @@ class ShipGenerationConfig:
     hull_length: float = 1.0
     hull_width: float = 1.0
     hull_height: float = 1.0
-    armor_density: float = 1.0
-    greeble_density: float = 0.85
     decal_density: float = 1.0
     wear_amount: float = 0.65
     glow_strength: float = 1.2
+    texture_workflow: str = "painted"
+    texture_resolution: int = 64
     material_style: str = "gunmetal"
     rust_amount: float = 0.22
     scratch_amount: float = 0.55
@@ -68,6 +69,8 @@ def generate_ship(config: ShipGenerationConfig) -> dict[str, Any]:
     validate_hull_profile(config.hull_profile)
     validate_detail_level(config.detail_level)
     validate_material_style(config.material_style)
+    validate_texture_workflow(config.texture_workflow)
+    validate_texture_resolution(config.texture_resolution)
     validate_seed(config.seed)
 
     rng = random.Random(config.seed)
@@ -117,6 +120,8 @@ def generate_ship(config: ShipGenerationConfig) -> dict[str, Any]:
     root["void_shipwright_role"] = config.role
     root["void_shipwright_faction"] = config.faction
     root["void_shipwright_seed"] = config.seed
+    root["void_shipwright_texture_workflow"] = config.texture_workflow
+    root["void_shipwright_texture_resolution"] = config.texture_resolution
     if config.presentation_scene:
         _setup_presentation_scene(collection, dimensions)
     return metadata
@@ -124,6 +129,15 @@ def generate_ship(config: ShipGenerationConfig) -> dict[str, Any]:
 
 def _safe_id(value: str) -> str:
     return "".join(char if char.isalnum() or char in ("_", "-") else "_" for char in value)
+
+
+def _stable_int_seed(seed: int, *parts: str) -> int:
+    value = seed & 0xFFFFFFFF
+    for part in parts:
+        for char in part:
+            value = ((value ^ ord(char)) * 16777619) & 0xFFFFFFFF
+        value = ((value ^ 0x9E3779B9) * 2246822519) & 0xFFFFFFFF
+    return value
 
 
 def _prepare_collection(name: str, *, clear_existing: bool) -> bpy.types.Collection:
@@ -200,10 +214,10 @@ MATERIAL_STYLE_PROFILES = {
         "rust_affinity": 0.25,
     },
     "rusted_iron": {
-        "base": (0.16, 0.13, 0.10, 1.0),
-        "armor": (0.22, 0.18, 0.13, 1.0),
-        "trim": (0.070, 0.055, 0.045, 1.0),
-        "edge": (0.64, 0.55, 0.43, 1.0),
+        "base": (0.105, 0.098, 0.090, 1.0),
+        "armor": (0.18, 0.17, 0.155, 1.0),
+        "trim": (0.050, 0.047, 0.043, 1.0),
+        "edge": (0.68, 0.64, 0.56, 1.0),
         "rust": (0.86, 0.28, 0.060, 1.0),
         "oxide": (0.34, 0.12, 0.045, 1.0),
         "metallic": 0.58,
@@ -266,12 +280,26 @@ def _clamp(value: float, minimum: float = 0.0, maximum: float = 1.0) -> float:
     return min(max(value, minimum), maximum)
 
 
+class _LazyMaterialLibrary(dict[str, bpy.types.Material]):
+    def __init__(self, builders: dict[str, Callable[[], bpy.types.Material]]) -> None:
+        super().__init__()
+        self._builders = builders
+
+    def __getitem__(self, key: str) -> bpy.types.Material:
+        if key not in self:
+            builder = self._builders.get(key)
+            if builder is None:
+                raise KeyError(key)
+            self[key] = builder()
+        return dict.__getitem__(self, key)
+
+
 def _create_materials(
     faction: str,
     *,
     glow_strength: float = 1.0,
     config: ShipGenerationConfig | None = None,
-) -> dict[str, bpy.types.Material]:
+) -> _LazyMaterialLibrary:
     profile = FACTION_PROFILES[faction]
     selected_material_style = config.material_style if config else "gunmetal"
     material_profile = MATERIAL_STYLE_PROFILES[selected_material_style]
@@ -294,7 +322,7 @@ def _create_materials(
     underbody = _mix_color(trim_color, (0.0, 0.0, 0.0, 1.0), 0.42)
     engine_shell = _mix_color(trim_color, (0.050, 0.072, 0.080, 1.0), 0.34)
     weapon_metal = _mix_color(trim_color, material_profile["edge"], 0.16)
-    cargo_metal = _mix_color(armor, (0.16, 0.13, 0.10, 1.0), 0.30)
+    cargo_metal = _mix_color(armor, (0.13, 0.135, 0.13, 1.0), 0.34)
     bay_metal = _mix_color(armor_dark, accent_color, 0.16)
     raider_red = (0.72, 0.055, 0.035, 1.0)
     glow_color = _rgba_from_rgb(
@@ -312,36 +340,95 @@ def _create_materials(
         min(glow_color[2] + 0.15, 1.0),
         1.0,
     )
+
     def rust_for(part_name: str, multiplier: float = 1.0) -> float:
         return _clamp(raw_rust_amount * part_profiles[part_name]["rust_affinity"] * multiplier)
 
-    return {
-        "hull": _metal_material("VS_Metal_Body_Primary", body_skin, part_profiles["body"], rust_amount=rust_for("body"), scratch_amount=scratch_amount, texture_scale=texture_scale, role_scale=1.0),
-        "body": _metal_material("VS_Metal_Body_Primary", body_skin, part_profiles["body"], rust_amount=rust_for("body"), scratch_amount=scratch_amount, texture_scale=texture_scale, role_scale=1.0),
-        "body_panel": _metal_material("VS_Metal_Body_Panel_Variation", graphite, part_profiles["body_panel"], rust_amount=rust_for("body_panel", 0.85), scratch_amount=scratch_amount * 0.78, texture_scale=texture_scale * 1.18, role_scale=0.85),
-        "wing": _metal_material("VS_Metal_Wing_Skin", wing_skin, part_profiles["wing"], rust_amount=rust_for("wing", 1.10), scratch_amount=scratch_amount * 1.12, texture_scale=texture_scale * 1.34, role_scale=0.72, metallic=part_profiles["wing"]["metallic"], roughness=part_profiles["wing"]["roughness"] + 0.08),
-        "wing_edge": _metal_material("VS_Metal_Wing_Edge_Livery", wing_edge, part_profiles["wing_edge"], rust_amount=rust_for("wing_edge", 0.62), scratch_amount=scratch_amount * 1.22, texture_scale=texture_scale * 1.5, role_scale=0.48, metallic=0.22, roughness=0.50),
-        "armor": _metal_material("VS_Metal_Armor_Plates", armor_top, part_profiles["armor"], rust_amount=rust_for("armor", 0.9), scratch_amount=scratch_amount, texture_scale=texture_scale * 0.82, role_scale=1.15),
-        "armor_top": _metal_material("VS_Metal_Armor_Top_Plates", armor_top, part_profiles["armor_top"], rust_amount=rust_for("armor_top", 0.82), scratch_amount=scratch_amount * 1.05, texture_scale=texture_scale * 0.78, role_scale=1.20),
-        "armor_dark": _metal_material("VS_Metal_Dark_Armor_Inset", armor_dark, part_profiles["armor_dark"], rust_amount=rust_for("armor_dark", 1.05), scratch_amount=scratch_amount * 0.70, texture_scale=texture_scale * 1.05, role_scale=0.88),
-        "accent": _metal_material("VS_Metal_Faction_Accent", accent_color, part_profiles["decal"], rust_amount=rust_for("decal", 0.55), scratch_amount=scratch_amount * 0.72, texture_scale=texture_scale * 0.75, role_scale=0.75, metallic=max(part_profiles["decal"]["metallic"] - 0.18, 0.18), roughness=max(part_profiles["decal"]["roughness"] - 0.08, 0.18)),
-        "trim": _metal_material("VS_Metal_Black_Trim", underbody, part_profiles["underbody"], rust_amount=rust_for("underbody", 1.15), scratch_amount=scratch_amount * 0.85, texture_scale=texture_scale * 1.25, role_scale=0.9, metallic=part_profiles["underbody"]["metallic"], roughness=part_profiles["underbody"]["roughness"] + 0.04),
-        "underbody": _metal_material("VS_Metal_Underbody_Black", underbody, part_profiles["underbody"], rust_amount=rust_for("underbody", 1.30), scratch_amount=scratch_amount * 0.62, texture_scale=texture_scale * 1.45, role_scale=0.65, metallic=part_profiles["underbody"]["metallic"], roughness=part_profiles["underbody"]["roughness"] + 0.10),
-        "engine_shell": _metal_material("VS_Metal_Engine_Heat_Stained", engine_shell, part_profiles["engine_shell"], rust_amount=rust_for("engine_shell", 0.62), scratch_amount=scratch_amount * 0.80, texture_scale=texture_scale * 1.1, role_scale=0.75, metallic=0.86, roughness=0.38),
-        "weapon": _metal_material("VS_Metal_Weapon_Blued_Steel", weapon_metal, part_profiles["weapon"], rust_amount=rust_for("weapon", 0.48), scratch_amount=scratch_amount * 1.30, texture_scale=texture_scale * 1.75, role_scale=0.45, metallic=0.90, roughness=0.34),
-        "cargo": _metal_material("VS_Metal_Cargo_Industrial", cargo_metal, part_profiles["cargo"], rust_amount=rust_for("cargo", 1.35), scratch_amount=scratch_amount * 0.58, texture_scale=texture_scale * 0.92, role_scale=1.0, metallic=max(part_profiles["cargo"]["metallic"] - 0.12, 0.32), roughness=part_profiles["cargo"]["roughness"] + 0.14),
-        "system_bay": _metal_material("VS_Metal_System_Bay_Module", bay_metal, part_profiles["system_bay"], rust_amount=rust_for("system_bay", 0.95), scratch_amount=scratch_amount * 0.92, texture_scale=texture_scale * 1.16, role_scale=0.9, metallic=part_profiles["system_bay"]["metallic"], roughness=part_profiles["system_bay"]["roughness"] + 0.06),
-        "panel": _metal_material("VS_Metal_Deep_Panel_Seams", (0.002, 0.003, 0.004, 1.0), part_profiles["panel"], rust_amount=rust_for("panel", 1.25), scratch_amount=scratch_amount * 0.40, texture_scale=texture_scale * 1.55, role_scale=0.45, metallic=max(part_profiles["panel"]["metallic"] - 0.30, 0.12), roughness=0.78),
-        "wear": _metal_material("VS_Metal_Chipped_Edge_Wear", worn_edge, part_profiles["wear"], rust_amount=rust_for("wear", 0.30), scratch_amount=1.0, texture_scale=texture_scale * 1.8, role_scale=0.35, metallic=0.72, roughness=0.42),
-        "red_decal": _metal_material("VS_Painted_Raider_Livery", raider_red, part_profiles["decal"], rust_amount=rust_for("decal", 0.45), scratch_amount=scratch_amount * 0.65, texture_scale=texture_scale * 1.2, role_scale=0.55, metallic=0.12, roughness=0.50),
-        "ordnance": _metal_material("VS_Metal_Ordnance_Amber", (0.9, 0.48, 0.10, 1.0), part_profiles["ordnance"], rust_amount=rust_for("ordnance", 0.25), scratch_amount=scratch_amount * 0.45, texture_scale=texture_scale, role_scale=0.45, metallic=0.34, roughness=0.42, emission_color=(0.9, 0.28, 0.04, 1.0), emission_strength=0.22 * glow_strength),
-        "glass": _material("VS_CanopyGlass", (0.08, 0.32, 0.46, 0.72), alpha=0.72, metallic=0.0, roughness=0.12),
-        "glow": _material("VS_EngineGlow", glow_color, emission_color=glow_color, emission_strength=3.5 * glow_strength),
-        "window": _material("VS_WindowLights", window_color, emission_color=window_color, emission_strength=2.2 * glow_strength),
-        "decal": _material("VS_DesignerDecals", accent_color, emission_color=accent_color, emission_strength=0.35, metallic=0.05, roughness=0.28),
-        "collision": _material("VS_CollisionProxy", (0.15, 0.85, 0.45, 0.25), alpha=0.25),
-        "marker": _material("VS_Marker", (0.1, 0.55, 1.0, 1.0)),
-    }
+    texture_workflow = config.texture_workflow if config else "painted"
+    texture_resolution = validate_texture_resolution(config.texture_resolution if config else 64)
+    paint_seed = _stable_int_seed(config.seed, config.ship_type, config.variant, config.faction) if config else 0
+    wear_amount = _clamp(config.wear_amount if config else 0.65)
+    decal_density = _clamp(config.decal_density if config else 1.0)
+
+    def metal(
+        part_name: str,
+        name: str,
+        material_color: tuple[float, float, float, float],
+        part_profile: dict[str, Any],
+        *,
+        rust_amount: float,
+        scratch_amount: float,
+        texture_scale: float,
+        role_scale: float,
+        metallic: float | None = None,
+        roughness: float | None = None,
+        emission_color: tuple[float, float, float, float] | None = None,
+        emission_strength: float = 0.0,
+    ) -> bpy.types.Material:
+        if texture_workflow == "painted":
+            return painted_metal_material(
+                name,
+                material_color,
+                part_profile,
+                part_name=part_name,
+                seed=paint_seed,
+                resolution=texture_resolution,
+                rust_amount=rust_amount,
+                scratch_amount=scratch_amount,
+                wear_amount=wear_amount,
+                decal_density=decal_density,
+                texture_scale=texture_scale,
+                role_scale=role_scale,
+                accent_color=accent_color,
+                metallic=metallic,
+                roughness=roughness,
+                emission_color=emission_color,
+                emission_strength=emission_strength,
+            )
+        return _metal_material(
+            name,
+            material_color,
+            part_profile,
+            rust_amount=rust_amount,
+            scratch_amount=scratch_amount,
+            texture_scale=texture_scale,
+            role_scale=role_scale,
+            metallic=metallic,
+            roughness=roughness,
+            emission_color=emission_color,
+            emission_strength=emission_strength,
+        )
+
+    library = _LazyMaterialLibrary(
+        {
+            "hull": lambda: library["body"],
+            "body": lambda: metal("body", "VS_Metal_Body_Primary", body_skin, part_profiles["body"], rust_amount=rust_for("body"), scratch_amount=scratch_amount, texture_scale=texture_scale, role_scale=1.0),
+            "body_panel": lambda: metal("body_panel", "VS_Metal_Body_Panel_Variation", graphite, part_profiles["body_panel"], rust_amount=rust_for("body_panel", 0.85), scratch_amount=scratch_amount * 0.78, texture_scale=texture_scale * 1.18, role_scale=0.85),
+            "wing": lambda: metal("wing", "VS_Metal_Wing_Skin", wing_skin, part_profiles["wing"], rust_amount=rust_for("wing", 1.10), scratch_amount=scratch_amount * 1.12, texture_scale=texture_scale * 1.34, role_scale=0.72, metallic=part_profiles["wing"]["metallic"], roughness=part_profiles["wing"]["roughness"] + 0.08),
+            "wing_edge": lambda: metal("wing_edge", "VS_Metal_Wing_Edge_Livery", wing_edge, part_profiles["wing_edge"], rust_amount=rust_for("wing_edge", 0.62), scratch_amount=scratch_amount * 1.22, texture_scale=texture_scale * 1.5, role_scale=0.48, metallic=0.22, roughness=0.50),
+            "armor": lambda: metal("armor", "VS_Metal_Armor_Plates", armor_top, part_profiles["armor"], rust_amount=rust_for("armor", 0.9), scratch_amount=scratch_amount, texture_scale=texture_scale * 0.82, role_scale=1.15),
+            "armor_top": lambda: metal("armor_top", "VS_Metal_Armor_Top_Plates", armor_top, part_profiles["armor_top"], rust_amount=rust_for("armor_top", 0.82), scratch_amount=scratch_amount * 1.05, texture_scale=texture_scale * 0.78, role_scale=1.20),
+            "armor_dark": lambda: metal("armor_dark", "VS_Metal_Dark_Armor_Inset", armor_dark, part_profiles["armor_dark"], rust_amount=rust_for("armor_dark", 1.05), scratch_amount=scratch_amount * 0.70, texture_scale=texture_scale * 1.05, role_scale=0.88),
+            "accent": lambda: metal("accent", "VS_Metal_Faction_Accent", accent_color, part_profiles["decal"], rust_amount=rust_for("decal", 0.55), scratch_amount=scratch_amount * 0.72, texture_scale=texture_scale * 0.75, role_scale=0.75, metallic=max(part_profiles["decal"]["metallic"] - 0.18, 0.18), roughness=max(part_profiles["decal"]["roughness"] - 0.08, 0.18)),
+            "trim": lambda: library["underbody"],
+            "underbody": lambda: metal("underbody", "VS_Metal_Underbody_Black", underbody, part_profiles["underbody"], rust_amount=rust_for("underbody", 1.30), scratch_amount=scratch_amount * 0.62, texture_scale=texture_scale * 1.45, role_scale=0.65, metallic=part_profiles["underbody"]["metallic"], roughness=part_profiles["underbody"]["roughness"] + 0.10),
+            "engine_shell": lambda: metal("engine_shell", "VS_Metal_Engine_Heat_Stained", engine_shell, part_profiles["engine_shell"], rust_amount=rust_for("engine_shell", 0.62), scratch_amount=scratch_amount * 0.80, texture_scale=texture_scale * 1.1, role_scale=0.75, metallic=0.86, roughness=0.38),
+            "weapon": lambda: metal("weapon", "VS_Metal_Weapon_Blued_Steel", weapon_metal, part_profiles["weapon"], rust_amount=rust_for("weapon", 0.48), scratch_amount=scratch_amount * 1.30, texture_scale=texture_scale * 1.75, role_scale=0.45, metallic=0.90, roughness=0.34),
+            "cargo": lambda: metal("cargo", "VS_Metal_Cargo_Industrial", cargo_metal, part_profiles["cargo"], rust_amount=rust_for("cargo", 1.35), scratch_amount=scratch_amount * 0.58, texture_scale=texture_scale * 0.92, role_scale=1.0, metallic=max(part_profiles["cargo"]["metallic"] - 0.12, 0.32), roughness=part_profiles["cargo"]["roughness"] + 0.14),
+            "system_bay": lambda: metal("system_bay", "VS_Metal_System_Bay_Module", bay_metal, part_profiles["system_bay"], rust_amount=rust_for("system_bay", 0.95), scratch_amount=scratch_amount * 0.92, texture_scale=texture_scale * 1.16, role_scale=0.9, metallic=part_profiles["system_bay"]["metallic"], roughness=part_profiles["system_bay"]["roughness"] + 0.06),
+            "panel": lambda: metal("panel", "VS_Metal_Deep_Panel_Seams", (0.002, 0.003, 0.004, 1.0), part_profiles["panel"], rust_amount=rust_for("panel", 1.25), scratch_amount=scratch_amount * 0.40, texture_scale=texture_scale * 1.55, role_scale=0.45, metallic=max(part_profiles["panel"]["metallic"] - 0.30, 0.12), roughness=0.78),
+            "wear": lambda: metal("wear", "VS_Metal_Chipped_Edge_Wear", worn_edge, part_profiles["wear"], rust_amount=rust_for("wear", 0.30), scratch_amount=1.0, texture_scale=texture_scale * 1.8, role_scale=0.35, metallic=0.72, roughness=0.42),
+            "red_decal": lambda: metal("red_decal", "VS_Painted_Raider_Livery", raider_red, part_profiles["decal"], rust_amount=rust_for("decal", 0.45), scratch_amount=scratch_amount * 0.65, texture_scale=texture_scale * 1.2, role_scale=0.55, metallic=0.12, roughness=0.50),
+            "ordnance": lambda: metal("ordnance", "VS_Metal_Ordnance_Amber", (0.9, 0.48, 0.10, 1.0), part_profiles["ordnance"], rust_amount=rust_for("ordnance", 0.25), scratch_amount=scratch_amount * 0.45, texture_scale=texture_scale, role_scale=0.45, metallic=0.34, roughness=0.42, emission_color=(0.9, 0.28, 0.04, 1.0), emission_strength=0.22 * glow_strength),
+            "glass": lambda: _material("VS_CanopyGlass", (0.08, 0.32, 0.46, 0.72), alpha=0.72, metallic=0.0, roughness=0.12),
+            "glow": lambda: _material("VS_EngineGlow", glow_color, emission_color=glow_color, emission_strength=3.5 * glow_strength),
+            "window": lambda: _material("VS_WindowLights", window_color, emission_color=window_color, emission_strength=2.2 * glow_strength),
+            "decal": lambda: _material("VS_DesignerDecals", accent_color, emission_color=accent_color, emission_strength=0.35, metallic=0.05, roughness=0.28),
+            "collision": lambda: _material("VS_CollisionProxy", (0.15, 0.85, 0.45, 0.25), alpha=0.25),
+            "marker": lambda: _material("VS_Marker", (0.1, 0.55, 1.0, 1.0)),
+        }
+    )
+    return library
 
 
 def _metal_material(
@@ -370,7 +457,7 @@ def _metal_material(
     material.diffuse_color = color
     material.use_nodes = True
     material["void_shipwright_material"] = "procedural_layered_metal"
-    material["void_shipwright_texture_workflow"] = "object_space_pbr_trim_decal_layered"
+    material["void_shipwright_texture_workflow"] = "non_organic_object_space_pbr_metal"
     material["void_shipwright_rust_amount"] = round(rust_amount, 4)
     material["void_shipwright_scratch_amount"] = round(scratch_amount, 4)
 
@@ -394,9 +481,9 @@ def _metal_material(
     texture_coordinates = nodes.new("ShaderNodeTexCoord")
     texture_coordinates.name = "VS_Object_Texture_Coordinates"
     mapping = nodes.new("ShaderNodeMapping")
-    mapping.name = "VS_Anisotropic_Object_Mapping"
+    mapping.name = "VS_Object_Metal_Mapping"
     if "Scale" in mapping.inputs:
-        mapping.inputs["Scale"].default_value = (1.0, 1.62, 0.74)
+        mapping.inputs["Scale"].default_value = (1.0, 1.08, 0.96)
     if "Object" in texture_coordinates.outputs and "Vector" in mapping.inputs:
         links.new(texture_coordinates.outputs["Object"], mapping.inputs["Vector"])
 
@@ -406,29 +493,29 @@ def _metal_material(
 
     grain_noise = nodes.new("ShaderNodeTexNoise")
     grain_noise.name = "VS_Metal_Grain_Noise"
-    grain_noise.inputs["Scale"].default_value = 38.0 * texture_scale * role_scale
-    grain_noise.inputs["Detail"].default_value = 15.0
-    grain_noise.inputs["Roughness"].default_value = 0.68
+    grain_noise.inputs["Scale"].default_value = 96.0 * texture_scale * max(role_scale, 0.45)
+    grain_noise.inputs["Detail"].default_value = 10.0
+    grain_noise.inputs["Roughness"].default_value = 0.56
     if "Distortion" in grain_noise.inputs:
-        grain_noise.inputs["Distortion"].default_value = 0.22 + rust_amount * 0.55
+        grain_noise.inputs["Distortion"].default_value = 0.035
     link_vector(grain_noise)
 
     color_ramp = nodes.new("ShaderNodeValToRGB")
     color_ramp.name = "VS_Metal_Base_Grain_Ramp"
-    rust_start = _clamp(0.92 - rust_amount * 0.46, 0.42, 0.95)
-    rust_color = _mix_color(profile["rust"], profile["oxide"], 0.25 + rust_amount * 0.35)
-    bright_wear = _mix_color(color, profile["edge"], 0.18 + scratch_amount * 0.30)
-    color_ramp.color_ramp.elements[0].position = 0.10
-    color_ramp.color_ramp.elements[0].color = _scale_color(color, 0.48 + rust_amount * 0.08)
-    color_ramp.color_ramp.elements[1].position = rust_start
+    oxide_tint = _mix_color(profile["rust"], profile["oxide"], 0.58 + rust_amount * 0.20)
+    rust_color = _mix_color(_scale_color(color, 0.58), oxide_tint, _clamp(rust_amount * 0.46, 0.0, 0.42))
+    bright_wear = _mix_color(color, profile["edge"], 0.08 + scratch_amount * 0.18)
+    color_ramp.color_ramp.elements[0].position = 0.16
+    color_ramp.color_ramp.elements[0].color = _mix_color(_scale_color(color, 0.74), profile["trim"], 0.14)
+    color_ramp.color_ramp.elements[1].position = 1.0
     color_ramp.color_ramp.elements[1].color = bright_wear
-    rust_element = color_ramp.color_ramp.elements.new(1.0)
-    rust_element.color = _mix_color(bright_wear, rust_color, rust_amount)
+    mid_grain = color_ramp.color_ramp.elements.new(0.64)
+    mid_grain.color = _mix_color(color, profile["edge"], 0.035)
     links.new(grain_noise.outputs["Fac"], color_ramp.inputs["Fac"])
 
     rust_voronoi = nodes.new("ShaderNodeTexVoronoi")
-    rust_voronoi.name = "VS_Rust_Oxide_Patch_Voronoi"
-    rust_voronoi.inputs["Scale"].default_value = 8.0 * texture_scale * max(role_scale, 0.38)
+    rust_voronoi.name = "VS_Sparse_Oxide_Pit_Voronoi"
+    rust_voronoi.inputs["Scale"].default_value = 58.0 * texture_scale * max(role_scale, 0.42)
     if "Randomness" in rust_voronoi.inputs:
         rust_voronoi.inputs["Randomness"].default_value = 0.78
     if "Detail" in rust_voronoi.inputs:
@@ -438,18 +525,19 @@ def _metal_material(
     link_vector(rust_voronoi)
 
     rust_mask = nodes.new("ShaderNodeValToRGB")
-    rust_mask.name = "VS_Rust_Patch_Mask"
-    rust_mask.color_ramp.elements[0].position = _clamp(0.36 - rust_amount * 0.10, 0.12, 0.48)
+    rust_mask.name = "VS_Sparse_Oxide_Pit_Mask"
+    rust_mask.color_ramp.elements[0].position = _clamp(0.78 - rust_amount * 0.06, 0.62, 0.86)
     rust_mask.color_ramp.elements[0].color = (0.0, 0.0, 0.0, 1.0)
-    rust_mask.color_ramp.elements[1].position = _clamp(0.88 - rust_amount * 0.30, 0.52, 0.94)
-    rust_mask.color_ramp.elements[1].color = (rust_amount, rust_amount, rust_amount, 1.0)
+    rust_mask.color_ramp.elements[1].position = _clamp(0.975 - rust_amount * 0.08, 0.84, 0.99)
+    oxide_factor = _clamp(rust_amount * 0.28, 0.0, 0.30)
+    rust_mask.color_ramp.elements[1].color = (oxide_factor, oxide_factor, oxide_factor, 1.0)
 
     rust_patch_color = nodes.new("ShaderNodeValToRGB")
-    rust_patch_color.name = "VS_Rust_Oxide_Color_Ramp"
-    rust_patch_color.color_ramp.elements[0].position = 0.18
-    rust_patch_color.color_ramp.elements[0].color = _mix_color(_scale_color(color, 0.46), profile["oxide"], rust_amount * 0.72)
+    rust_patch_color.name = "VS_Sparse_Oxide_Color_Ramp"
+    rust_patch_color.color_ramp.elements[0].position = 0.32
+    rust_patch_color.color_ramp.elements[0].color = _mix_color(_scale_color(color, 0.66), profile["oxide"], rust_amount * 0.20)
     rust_patch_color.color_ramp.elements[1].position = 1.0
-    rust_patch_color.color_ramp.elements[1].color = rust_color
+    rust_patch_color.color_ramp.elements[1].color = _mix_color(color, rust_color, 0.62)
     links.new(rust_voronoi.outputs["Distance"], rust_mask.inputs["Fac"])
     links.new(rust_voronoi.outputs["Distance"], rust_patch_color.inputs["Fac"])
 
@@ -467,7 +555,7 @@ def _metal_material(
     rough_noise.inputs["Detail"].default_value = 11.0
     rough_noise.inputs["Roughness"].default_value = 0.72
     if "Distortion" in rough_noise.inputs:
-        rough_noise.inputs["Distortion"].default_value = 0.45 + rust_amount
+        rough_noise.inputs["Distortion"].default_value = 0.12 + rust_amount * 0.18
     link_vector(rough_noise)
     pitting_voronoi = nodes.new("ShaderNodeTexVoronoi")
     pitting_voronoi.name = "VS_Micro_Pitting_Voronoi"
@@ -498,21 +586,22 @@ def _metal_material(
     if "Distortion" in scratch_noise.inputs:
         scratch_noise.inputs["Distortion"].default_value = 0.08
     link_vector(scratch_noise)
-    scratch_wave = nodes.new("ShaderNodeTexWave")
-    scratch_wave.name = "VS_Directional_Hairline_Scratches"
-    scratch_wave.inputs["Scale"].default_value = 52.0 * texture_scale * max(role_scale, 0.35)
-    if "Distortion" in scratch_wave.inputs:
-        scratch_wave.inputs["Distortion"].default_value = 7.0 * scratch_amount
-    if hasattr(scratch_wave, "bands_direction"):
-        scratch_wave.bands_direction = "Y"
-    link_vector(scratch_wave)
+    fine_scratch_noise = nodes.new("ShaderNodeTexNoise")
+    fine_scratch_noise.name = "VS_Fine_Chipped_Micro_Scratches"
+    fine_scratch_noise.inputs["Scale"].default_value = 285.0 * texture_scale * max(role_scale, 0.35)
+    fine_scratch_noise.inputs["Detail"].default_value = 9.0
+    fine_scratch_noise.inputs["Roughness"].default_value = 0.50
+    if "Distortion" in fine_scratch_noise.inputs:
+        fine_scratch_noise.inputs["Distortion"].default_value = 0.0
+    link_vector(fine_scratch_noise)
     scratch_isolate = nodes.new("ShaderNodeValToRGB")
-    scratch_isolate.name = "VS_Scratch_Line_Isolation"
-    scratch_isolate.color_ramp.elements[0].position = 0.55
+    scratch_isolate.name = "VS_Micro_Scratch_Isolation"
+    scratch_isolate.color_ramp.elements[0].position = _clamp(0.74 - scratch_amount * 0.06, 0.62, 0.82)
     scratch_isolate.color_ramp.elements[0].color = (0.0, 0.0, 0.0, 1.0)
-    scratch_isolate.color_ramp.elements[1].position = _clamp(0.96 - scratch_amount * 0.10, 0.78, 0.98)
-    scratch_isolate.color_ramp.elements[1].color = (scratch_amount, scratch_amount, scratch_amount, 1.0)
-    links.new(scratch_wave.outputs["Color"], scratch_isolate.inputs["Fac"])
+    scratch_isolate.color_ramp.elements[1].position = _clamp(0.985 - scratch_amount * 0.045, 0.88, 0.995)
+    scratch_factor = _clamp(scratch_amount * 0.46, 0.0, 0.48)
+    scratch_isolate.color_ramp.elements[1].color = (scratch_factor, scratch_factor, scratch_factor, 1.0)
+    links.new(fine_scratch_noise.outputs["Fac"], scratch_isolate.inputs["Fac"])
     bump_height = nodes.new("ShaderNodeMath")
     bump_height.name = "VS_Bump_Combined_Pits_And_Scratches"
     bump_height.operation = "ADD"
@@ -520,8 +609,8 @@ def _metal_material(
     links.new(scratch_isolate.outputs["Color"], bump_height.inputs[1])
     bump = nodes.new("ShaderNodeBump")
     bump.name = "VS_Metal_Bump"
-    bump.inputs["Strength"].default_value = 0.035 + scratch_amount * 0.075 + rust_amount * 0.045
-    bump.inputs["Distance"].default_value = 0.030 + rust_amount * 0.080
+    bump.inputs["Strength"].default_value = 0.018 + scratch_amount * 0.035 + rust_amount * 0.018
+    bump.inputs["Distance"].default_value = 0.010 + rust_amount * 0.030
     links.new(bump_height.outputs["Value"], bump.inputs["Height"])
     links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
 
@@ -733,8 +822,6 @@ def _create_meshes(
     height = dimensions["height"]
     objects = _create_archetype_base(collection, materials, dimensions, rng, config)
 
-    objects.extend(_create_panel_details(collection, materials, dimensions, rng, config))
-    objects.extend(_create_greebles(collection, materials, dimensions, rng, config))
     objects.extend(_create_role_features(collection, materials, dimensions, rng, config))
     objects.extend(_create_faction_features(collection, materials, dimensions, rng, config))
     objects.extend(_create_archetype_features(collection, materials, dimensions, rng, config))
@@ -814,7 +901,6 @@ def _create_light_raider_base(
     engine = dimensions["engine"]
     return [
         _raider_hull(collection, "MESH_Hull_Core", length, width, height, materials["body"], rng),
-        _raider_upper_armor(collection, "MESH_Dorsal_Armor_Shell", length, width, height, materials["armor_top"]),
         _raider_keel(collection, "MESH_Ventral_Keel", length, width, height, materials["underbody"]),
         _raider_cockpit(collection, "MESH_Canopy_Glass", length, width, height, materials["glass"]),
         _raider_wing(collection, "MESH_Wing_Left", -1, length, width, height, wing, materials["wing"]),
@@ -1058,28 +1144,6 @@ def _raider_hull(
         (length * 0.60, width * 0.08, height * 0.10, -height * 0.03, 0.0),
     ]
     return _faceted_loft_y(collection, name, rings, material, bevel=0.018)
-
-
-def _raider_upper_armor(
-    collection: bpy.types.Collection,
-    name: str,
-    length: float,
-    width: float,
-    height: float,
-    material: bpy.types.Material,
-) -> bpy.types.Object:
-    outline = [
-        (-width * 0.045, -length * 0.50),
-        (width * 0.11, -length * 0.34),
-        (width * 0.18, -length * 0.06),
-        (width * 0.15, length * 0.30),
-        (width * 0.055, length * 0.50),
-        (-width * 0.055, length * 0.50),
-        (-width * 0.15, length * 0.30),
-        (-width * 0.18, -length * 0.06),
-        (-width * 0.11, -length * 0.34),
-    ]
-    return _plate_prism(collection, name, outline, height * 0.39, height * 0.025, material, bevel=0.012)
 
 
 def _raider_keel(
@@ -1772,96 +1836,6 @@ def _cylinder_y(
     return obj
 
 
-def _create_panel_details(
-    collection: bpy.types.Collection,
-    materials: dict[str, bpy.types.Material],
-    dimensions: dict[str, float],
-    rng: random.Random,
-    config: ShipGenerationConfig,
-) -> list[bpy.types.Object]:
-    length = dimensions["length"]
-    width = dimensions["width"]
-    height = dimensions["height"]
-    objects = []
-
-    detail = _detail_multiplier(config.detail_level)
-    panel_rows = max(1, min(6, round(4 * detail)))
-    y_factors = [(-0.29 + index * (0.58 / max(panel_rows - 1, 1))) for index in range(panel_rows)]
-    for index, y_factor in enumerate(y_factors, start=1):
-        panel_width = width * rng.uniform(0.035, 0.055)
-        panel_length = length * rng.uniform(0.045, 0.075)
-        x = width * rng.uniform(0.08, 0.17)
-        y = length * y_factor
-        left_z = _hull_top_z(length, width, height, -x, y, clearance=height * 0.018)
-        right_z = _hull_top_z(length, width, height, x, y, clearance=height * 0.018)
-        objects.append(_raised_strip_y(collection, f"MESH_Panel_Top_Left_{index:02d}", (-x, y, left_z), panel_length, panel_width, height * 0.012, materials["panel"]))
-        objects.append(_raised_strip_y(collection, f"MESH_Panel_Top_Right_{index:02d}", (x, y, right_z), panel_length, panel_width, height * 0.012, materials["panel"]))
-
-    spine_xs = (-width * 0.2, 0.0, width * 0.2) if detail > 0.7 else (0.0,)
-    for index, x in enumerate(spine_xs, start=1):
-        y = length * rng.uniform(-0.18, 0.22)
-        objects.append(
-            _raised_strip_y(
-                collection,
-                f"MESH_Accent_Spine_{index:02d}",
-                (x, y, _hull_top_z(length, width, height, x, y, clearance=height * 0.025)),
-                length * 0.13,
-                width * 0.025,
-                height * 0.014,
-                materials["accent"],
-            )
-        )
-    return objects
-
-
-def _create_greebles(
-    collection: bpy.types.Collection,
-    materials: dict[str, bpy.types.Material],
-    dimensions: dict[str, float],
-    rng: random.Random,
-    config: ShipGenerationConfig,
-) -> list[bpy.types.Object]:
-    length = dimensions["length"]
-    width = dimensions["width"]
-    height = dimensions["height"]
-    detail = _detail_multiplier(config.detail_level)
-    count = round((4 if length < 8.0 else 6) * detail * config.greeble_density)
-    objects = []
-    for index in range(1, count + 1):
-        y = rng.uniform(-length * 0.1, length * 0.32)
-        sx = rng.uniform(width * 0.025, width * 0.045)
-        sy = rng.uniform(length * 0.035, length * 0.075)
-        sz = rng.uniform(height * 0.025, height * 0.055)
-        x = width * rng.uniform(0.26, 0.34)
-        left_z = _hull_side_z(length, width, height, -x, y, clearance=height * rng.uniform(0.02, 0.06))
-        right_z = _hull_side_z(length, width, height, x, y, clearance=height * rng.uniform(0.02, 0.06))
-        objects.append(_angular_surface_greeble(collection, f"MESH_Greeble_Left_{index:02d}", -x, y, left_z, sx, sy, sz, -1, materials["system_bay"]))
-        objects.append(_angular_surface_greeble(collection, f"MESH_Greeble_Right_{index:02d}", x, y, right_z, sx, sy, sz, 1, materials["system_bay"]))
-    return objects
-
-
-def _angular_surface_greeble(
-    collection: bpy.types.Collection,
-    name: str,
-    x: float,
-    y: float,
-    z: float,
-    half_width: float,
-    half_length: float,
-    half_height: float,
-    side: int,
-    material: bpy.types.Material,
-) -> bpy.types.Object:
-    skew = side * half_width * 0.55
-    outline = [
-        (x - side * half_width + skew, y - half_length),
-        (x + side * half_width * 0.8 + skew, y - half_length * 0.55),
-        (x + side * half_width, y + half_length),
-        (x - side * half_width * 0.65, y + half_length * 0.55),
-    ]
-    return _plate_prism(collection, name, outline, z, max(half_height * 0.35, 0.006), material, bevel=0.004)
-
-
 def _raised_strip_y(
     collection: bpy.types.Collection,
     name: str,
@@ -2110,29 +2084,6 @@ def _create_faction_features(
                     width * rng.uniform(0.045, 0.07),
                     height * rng.uniform(0.075, 0.12),
                     materials["cargo"],
-                )
-            )
-        for index, y_factor in enumerate((-0.2, -0.02, 0.16), start=1):
-            objects.append(
-                _spike(
-                    collection,
-                    f"MESH_Raider_Spike_Left_{index:02d}",
-                    (-width * 0.38, length * y_factor, height * 0.04),
-                    -1,
-                    width * 0.16,
-                    height * 0.05,
-                    materials["weapon"],
-                )
-            )
-            objects.append(
-                _spike(
-                    collection,
-                    f"MESH_Raider_Spike_Right_{index:02d}",
-                    (width * 0.38, length * y_factor, height * 0.04),
-                    1,
-                    width * 0.16,
-                    height * 0.05,
-                    materials["weapon"],
                 )
             )
 
@@ -2507,132 +2458,11 @@ def _create_designer_detail_layer(
     height = dimensions["height"]
     objects: list[bpy.types.Object] = []
 
-    objects.extend(_create_raider_armor_tiles(collection, materials, length, width, height, rng, config))
-    objects.extend(_create_panel_seams(collection, materials, length, width, height))
     objects.extend(_create_light_slits(collection, materials, length, width, height, rng, config))
     objects.extend(_create_teal_light_strips(collection, materials, length, width, height, config))
     objects.extend(_create_engine_cable_runs(collection, materials, length, width, height))
     objects.extend(_create_nose_chevrons(collection, materials, length, width, height, config))
-    objects.extend(_create_wing_decal_sets(collection, materials, length, width, height, rng, config))
-    objects.extend(_create_micro_vents(collection, materials, length, width, height, rng, config))
     objects.extend(_create_paint_scuffs(collection, materials, length, width, height, rng, config))
-    objects.extend(_create_faction_insignia(collection, materials, length, width, height, config.faction))
-    return objects
-
-
-def _create_raider_armor_tiles(
-    collection: bpy.types.Collection,
-    materials: dict[str, bpy.types.Material],
-    length: float,
-    width: float,
-    height: float,
-    rng: random.Random,
-    config: ShipGenerationConfig,
-) -> list[bpy.types.Object]:
-    objects: list[bpy.types.Object] = []
-    detail = _detail_multiplier(config.detail_level)
-    tile_count = max(0, min(10, round(7 * detail * config.armor_density)))
-    y_factors = [(-0.39 + index * (0.79 / max(tile_count - 1, 1))) for index in range(tile_count)]
-    for index, y_factor in enumerate(y_factors, start=1):
-        half_w = width * rng.uniform(0.10, 0.19)
-        half_l = length * rng.uniform(0.030, 0.052)
-        skew = width * rng.uniform(-0.035, 0.035)
-        y = length * y_factor
-        outline = [
-            (-half_w + skew, y - half_l),
-            (half_w * 0.82 + skew, y - half_l * 0.76),
-            (half_w - skew, y + half_l),
-            (-half_w * 0.74 - skew, y + half_l * 0.82),
-        ]
-        tile_z = _hull_top_z(length, width, height, 0.0, y, clearance=height * 0.026 + rng.uniform(-height * 0.004, height * 0.006))
-        objects.append(_plate_prism(collection, f"MESH_Armor_Top_Tile_{index:02d}", outline, tile_z, height * 0.010, materials["armor_top"], bevel=0.006))
-
-    for side in (-1, 1):
-        side_count = max(0, min(6, round(4 * detail * config.armor_density)))
-        side_factors = [(-0.30 + index * (0.58 / max(side_count - 1, 1))) for index in range(side_count)]
-        for index, y_factor in enumerate(side_factors, start=1):
-            x = side * width * rng.uniform(0.28, 0.37)
-            y = length * y_factor
-            objects.append(
-                _raised_strip_y(
-                    collection,
-                    f"MESH_Side_Armor_{'L' if side < 0 else 'R'}_{index:02d}",
-                    (x, y, _hull_side_z(length, width, height, x, y, clearance=height * rng.uniform(0.035, 0.075))),
-                    length * rng.uniform(0.035, 0.065),
-                    width * rng.uniform(0.030, 0.045),
-                    height * 0.018,
-                    materials["armor_dark"],
-                )
-            )
-    return objects
-
-
-def _create_panel_seams(
-    collection: bpy.types.Collection,
-    materials: dict[str, bpy.types.Material],
-    length: float,
-    width: float,
-    height: float,
-) -> list[bpy.types.Object]:
-    objects: list[bpy.types.Object] = []
-    objects.append(
-        _curve_path(
-            collection,
-            "MESH_Seam_Centerline",
-            [
-                (0.0, -length * 0.47, _hull_top_z(length, width, height, 0.0, -length * 0.47, clearance=height * 0.014)),
-                (0.0, -length * 0.22, _hull_top_z(length, width, height, 0.0, -length * 0.22, clearance=height * 0.014)),
-                (0.0, length * 0.18, _hull_top_z(length, width, height, 0.0, length * 0.18, clearance=height * 0.014)),
-                (0.0, length * 0.45, _hull_top_z(length, width, height, 0.0, length * 0.45, clearance=height * 0.014)),
-            ],
-            materials["panel"],
-            bevel_depth=width * 0.0035,
-        )
-    )
-    for index, side in enumerate((-1, 1), start=1):
-        objects.append(
-            _curve_path(
-                collection,
-                f"MESH_Seam_Shoulder_{index:02d}",
-                [
-                    (side * width * 0.08, -length * 0.43, _hull_top_z(length, width, height, side * width * 0.08, -length * 0.43, clearance=height * 0.012)),
-                    (side * width * 0.25, -length * 0.2, _hull_top_z(length, width, height, side * width * 0.25, -length * 0.2, clearance=height * 0.012)),
-                    (side * width * 0.32, length * 0.1, _hull_top_z(length, width, height, side * width * 0.32, length * 0.1, clearance=height * 0.012)),
-                    (side * width * 0.19, length * 0.4, _hull_top_z(length, width, height, side * width * 0.19, length * 0.4, clearance=height * 0.012)),
-                ],
-                materials["panel"],
-                bevel_depth=width * 0.003,
-            )
-        )
-        objects.append(
-            _curve_path(
-                collection,
-                f"MESH_Seam_Lower_Rail_{index:02d}",
-                [
-                    (side * width * 0.18, -length * 0.24, _hull_side_z(length, width, height, side * width * 0.18, -length * 0.24, clearance=-height * 0.11)),
-                    (side * width * 0.35, length * 0.02, _hull_side_z(length, width, height, side * width * 0.35, length * 0.02, clearance=-height * 0.11)),
-                    (side * width * 0.28, length * 0.35, _hull_side_z(length, width, height, side * width * 0.28, length * 0.35, clearance=-height * 0.08)),
-                ],
-                materials["panel"],
-                bevel_depth=width * 0.0028,
-            )
-        )
-
-    for index, y_factor in enumerate((-0.34, -0.18, 0.02, 0.22, 0.38), start=1):
-        objects.append(
-            _curve_path(
-                collection,
-                f"MESH_Seam_Cross_{index:02d}",
-                [
-                    (-width * 0.17, length * y_factor, _hull_top_z(length, width, height, -width * 0.17, length * y_factor, clearance=height * 0.012)),
-                    (-width * 0.05, length * (y_factor + 0.018), _hull_top_z(length, width, height, -width * 0.05, length * (y_factor + 0.018), clearance=height * 0.012)),
-                    (width * 0.05, length * (y_factor + 0.018), _hull_top_z(length, width, height, width * 0.05, length * (y_factor + 0.018), clearance=height * 0.012)),
-                    (width * 0.17, length * y_factor, _hull_top_z(length, width, height, width * 0.17, length * y_factor, clearance=height * 0.012)),
-                ],
-                materials["panel"],
-                bevel_depth=width * 0.0025,
-            )
-        )
     return objects
 
 
@@ -2808,91 +2638,6 @@ def _create_nose_chevrons(
     return objects
 
 
-def _create_wing_decal_sets(
-    collection: bpy.types.Collection,
-    materials: dict[str, bpy.types.Material],
-    length: float,
-    width: float,
-    height: float,
-    rng: random.Random,
-    config: ShipGenerationConfig,
-) -> list[bpy.types.Object]:
-    objects: list[bpy.types.Object] = []
-    if config.ship_type not in {"light_raider", "interceptor"}:
-        count = max(0, min(6, round(4 * _detail_multiplier(config.detail_level) * config.decal_density)))
-        for index in range(count):
-            side = -1 if index % 2 == 0 else 1
-            x0 = side * width * (0.18 + 0.04 * (index % 3))
-            y0 = length * (-0.30 + index * 0.11)
-            x1 = side * width * (0.32 + 0.05 * (index % 2))
-            y1 = y0 + length * 0.045
-            objects.append(
-                _curve_path(
-                    collection,
-                    f"MESH_Hull_Livery_Stripe_{index + 1:02d}",
-                    [
-                        (x0, y0, _hull_top_z(length, width, height, x0, y0, clearance=height * 0.018)),
-                        (x1, y1, _hull_top_z(length, width, height, x1, y1, clearance=height * 0.018)),
-                    ],
-                    materials["red_decal"],
-                    bevel_depth=width * 0.0045,
-                )
-            )
-        return objects
-
-    for side in (-1, 1):
-        count = max(0, min(5, round(3 * _detail_multiplier(config.detail_level) * config.decal_density)))
-        y_factors = [(-0.14 + index * (0.30 / max(count - 1, 1))) for index in range(count)]
-        for index, y_factor in enumerate(y_factors, start=1):
-            x0 = side * width * rng.uniform(0.32, 0.5)
-            x1 = side * width * rng.uniform(0.48, 0.66)
-            objects.append(
-                _curve_path(
-                    collection,
-                    f"MESH_Wing_Decal_{'L' if side < 0 else 'R'}_{index:02d}",
-                    [(x0, length * y_factor, height * 0.02), (x1, length * (y_factor + 0.035), height * 0.035)],
-                    materials["red_decal"],
-                    bevel_depth=width * 0.0045,
-                )
-            )
-    return objects
-
-
-def _create_micro_vents(
-    collection: bpy.types.Collection,
-    materials: dict[str, bpy.types.Material],
-    length: float,
-    width: float,
-    height: float,
-    rng: random.Random,
-    config: ShipGenerationConfig,
-) -> list[bpy.types.Object]:
-    objects: list[bpy.types.Object] = []
-    for side in (-1, 1):
-        bank_count = max(0, min(5, round(3 * _detail_multiplier(config.detail_level) * config.greeble_density)))
-        blade_count = max(2, min(7, round(5 * _detail_multiplier(config.detail_level))))
-        for bank in range(bank_count):
-            base_y = length * (-0.06 + bank * 0.14)
-            base_x = side * width * rng.uniform(0.26, 0.34)
-            for blade in range(blade_count):
-                y0 = base_y + blade * length * 0.012
-                y1 = y0 + length * 0.008
-                x1 = base_x + side * width * 0.06
-                objects.append(
-                    _curve_path(
-                        collection,
-                        f"MESH_Vent_{'L' if side < 0 else 'R'}_{bank + 1:02d}_{blade + 1:02d}",
-                        [
-                            (base_x, y0, _hull_top_z(length, width, height, base_x, y0, clearance=height * 0.012)),
-                            (x1, y1, _hull_top_z(length, width, height, x1, y1, clearance=height * 0.012)),
-                        ],
-                        materials["panel"],
-                        bevel_depth=width * 0.0035,
-                    )
-                )
-    return objects
-
-
 def _create_paint_scuffs(
     collection: bpy.types.Collection,
     materials: dict[str, bpy.types.Material],
@@ -2921,30 +2666,6 @@ def _create_paint_scuffs(
                 bevel_depth=width * rng.uniform(0.0018, 0.0035),
             )
         )
-    return objects
-
-
-def _create_faction_insignia(
-    collection: bpy.types.Collection,
-    materials: dict[str, bpy.types.Material],
-    length: float,
-    width: float,
-    height: float,
-    faction: str,
-) -> list[bpy.types.Object]:
-    objects: list[bpy.types.Object] = []
-    base_y = -length * 0.05
-    z = _hull_top_z(length, width, height, 0.0, base_y, clearance=height * 0.024)
-    scale = width * 0.055
-    if faction == "ancient_relic":
-        objects.append(_torus_y(collection, "MESH_Insignia_Relic_Ring", (0.0, base_y, z), scale, scale * 0.07, materials["glow"]))
-        objects.append(_curve_path(collection, "MESH_Insignia_Relic_Line", [(0.0, base_y - scale, z), (0.0, base_y + scale, z)], materials["glow"], bevel_depth=width * 0.004))
-    elif faction in {"pirate_clan", "smuggler_network"}:
-        objects.append(_curve_path(collection, "MESH_Insignia_Raider_A", [(-scale, base_y + scale, z), (0.0, base_y - scale, z), (scale, base_y + scale, z)], materials["red_decal"], bevel_depth=width * 0.006))
-        objects.append(_curve_path(collection, "MESH_Insignia_Raider_B", [(-scale * 0.55, base_y, z), (scale * 0.55, base_y, z)], materials["red_decal"], bevel_depth=width * 0.005))
-    else:
-        objects.append(_curve_path(collection, "MESH_Insignia_Primary_A", [(-scale, base_y, z), (0.0, base_y - scale * 0.9, z), (scale, base_y, z)], materials["decal"], bevel_depth=width * 0.005))
-        objects.append(_curve_path(collection, "MESH_Insignia_Primary_B", [(-scale * 0.75, base_y + scale * 0.45, z), (scale * 0.75, base_y + scale * 0.45, z)], materials["decal"], bevel_depth=width * 0.005))
     return objects
 
 
@@ -3009,26 +2730,6 @@ def _antenna(
     return obj
 
 
-def _spike(
-    collection: bpy.types.Collection,
-    name: str,
-    location: tuple[float, float, float],
-    side: int,
-    length: float,
-    half_width: float,
-    material: bpy.types.Material,
-) -> bpy.types.Object:
-    vertices = [
-        (0.0, -half_width, -half_width),
-        (0.0, half_width, -half_width),
-        (0.0, half_width, half_width),
-        (0.0, -half_width, half_width),
-        (side * length, 0.0, 0.0),
-    ]
-    faces = [(0, 1, 2, 3), (0, 4, 1), (1, 4, 2), (2, 4, 3), (3, 4, 0)]
-    return _mesh_object(collection, name, vertices, faces, material, location=location, bevel=0.004)
-
-
 def _mesh_object(
     collection: bpy.types.Collection,
     name: str,
@@ -3044,6 +2745,7 @@ def _mesh_object(
     mesh = bpy.data.meshes.new(name + "_Mesh")
     mesh.from_pydata(vertices, [], faces)
     mesh.update()
+    _assign_box_projected_uvs(mesh)
     obj = bpy.data.objects.new(name, mesh)
     obj.location = location
     obj.data.materials.append(material)
@@ -3052,7 +2754,40 @@ def _mesh_object(
         for polygon in obj.data.polygons:
             polygon.use_smooth = True
     _add_surface_modifiers(obj, bevel=bevel, subdivision=subdivision)
+    obj["void_shipwright_texture_uv"] = "VS_PaintedUV"
     return obj
+
+
+def _assign_box_projected_uvs(mesh: bpy.types.Mesh) -> None:
+    if not mesh.vertices or not mesh.polygons:
+        return
+    coordinates = [vertex.co.copy() for vertex in mesh.vertices]
+    minimum = Vector((min(co.x for co in coordinates), min(co.y for co in coordinates), min(co.z for co in coordinates)))
+    maximum = Vector((max(co.x for co in coordinates), max(co.y for co in coordinates), max(co.z for co in coordinates)))
+    span = maximum - minimum
+    span.x = max(span.x, 0.0001)
+    span.y = max(span.y, 0.0001)
+    span.z = max(span.z, 0.0001)
+    uv_layer = mesh.uv_layers.get("VS_PaintedUV") or mesh.uv_layers.new(name="VS_PaintedUV")
+
+    for polygon in mesh.polygons:
+        normal = polygon.normal
+        ax = abs(normal.x)
+        ay = abs(normal.y)
+        az = abs(normal.z)
+        for loop_index in polygon.loop_indices:
+            vertex = mesh.vertices[mesh.loops[loop_index].vertex_index].co
+            if az >= ax and az >= ay:
+                u = (vertex.x - minimum.x) / span.x
+                v = (vertex.y - minimum.y) / span.y
+            elif ax >= ay:
+                u = (vertex.y - minimum.y) / span.y
+                v = (vertex.z - minimum.z) / span.z
+            else:
+                u = (vertex.x - minimum.x) / span.x
+                v = (vertex.z - minimum.z) / span.z
+            uv_layer.data[loop_index].uv = (u, v)
+    mesh.update()
 
 
 def _curve_path(

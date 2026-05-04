@@ -24,6 +24,11 @@ class VOID_SHIPWRIGHT_PT_generator(bpy.types.Panel):
         layout.prop(settings, "seed")
         layout.prop(settings, "clear_existing")
 
+        action_row = layout.row(align=True)
+        action_row.scale_y = 1.25
+        action_row.operator("void_shipwright.generate_ship", text="Generate Ship")
+        action_row.operator("void_shipwright.export_metadata", text="Generate + Export")
+
         layout.separator()
         layout.label(text="Silhouette")
         layout.prop(settings, "detail_level")
@@ -43,11 +48,11 @@ class VOID_SHIPWRIGHT_PT_generator(bpy.types.Panel):
 
         layout.separator()
         layout.label(text="Surface Detail")
-        layout.prop(settings, "armor_density", slider=True)
-        layout.prop(settings, "greeble_density", slider=True)
         layout.prop(settings, "decal_density", slider=True)
         layout.prop(settings, "wear_amount", slider=True)
         layout.prop(settings, "glow_strength", slider=True)
+        layout.prop(settings, "texture_workflow")
+        layout.prop(settings, "texture_resolution")
         layout.prop(settings, "material_style")
         layout.prop(settings, "rust_amount", slider=True)
         layout.prop(settings, "scratch_amount", slider=True)

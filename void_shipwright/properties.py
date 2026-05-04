@@ -5,7 +5,7 @@ from __future__ import annotations
 import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, FloatVectorProperty, IntProperty, PointerProperty, StringProperty
 
-from .constants import VALID_FACTIONS, VALID_HULL_PROFILES, VALID_MATERIAL_STYLES, VALID_ROLES, VALID_SHIP_TYPES
+from .constants import VALID_FACTIONS, VALID_HULL_PROFILES, VALID_MATERIAL_STYLES, VALID_ROLES, VALID_SHIP_TYPES, VALID_TEXTURE_WORKFLOWS
 
 
 def _enum_items(values: tuple[str, ...]) -> list[tuple[str, str, str]]:
@@ -43,9 +43,15 @@ MATERIAL_STYLE_LABELS = {
     "painted_composite": ("Painted Composite", "Painted armor over metal with exposed chipped edges"),
 }
 
+TEXTURE_WORKFLOW_LABELS = {
+    "painted": ("Painted Textures", "Generate packed image texture maps with painted metal, panel lines, chips, rust, roughness, and normal detail"),
+    "procedural_shader": ("Procedural Shader", "Use Blender shader nodes instead of generated image texture maps"),
+}
+
 HULL_PROFILES = tuple((value, *HULL_PROFILE_LABELS[value]) for value in VALID_HULL_PROFILES)
 SHIP_TYPES = tuple((value, *SHIP_TYPE_LABELS[value]) for value in VALID_SHIP_TYPES)
 MATERIAL_STYLES = tuple((value, *MATERIAL_STYLE_LABELS[value]) for value in VALID_MATERIAL_STYLES)
+TEXTURE_WORKFLOWS = tuple((value, *TEXTURE_WORKFLOW_LABELS[value]) for value in VALID_TEXTURE_WORKFLOWS)
 
 
 class VoidShipwrightSettings(bpy.types.PropertyGroup):
@@ -141,20 +147,6 @@ class VoidShipwrightSettings(bpy.types.PropertyGroup):
         min=0.55,
         max=1.8,
     )
-    armor_density: FloatProperty(
-        name="Armor Density",
-        description="How many layered armor plates are generated",
-        default=1.0,
-        min=0.0,
-        max=1.0,
-    )
-    greeble_density: FloatProperty(
-        name="Greeble Density",
-        description="How much small technical surface detail is generated",
-        default=0.85,
-        min=0.0,
-        max=1.0,
-    )
     decal_density: FloatProperty(
         name="Decal Density",
         description="How much painted livery and striping is generated",
@@ -178,13 +170,27 @@ class VoidShipwrightSettings(bpy.types.PropertyGroup):
     )
     material_style: EnumProperty(
         name="Material Style",
-        description="Procedural metal texture family",
+        description="Metal texture color/material family",
         items=MATERIAL_STYLES,
         default="gunmetal",
     )
+    texture_workflow: EnumProperty(
+        name="Texture Workflow",
+        description="How visible ship surface textures are generated",
+        items=TEXTURE_WORKFLOWS,
+        default="painted",
+    )
+    texture_resolution: IntProperty(
+        name="Texture Resolution",
+        description="Size of each generated painted material map",
+        default=64,
+        min=64,
+        max=1024,
+        step=64,
+    )
     rust_amount: FloatProperty(
         name="Rust",
-        description="Amount of rust, oxidation, and brown/green corrosion in procedural metal",
+        description="Amount of rust, oxidation, and brown/green corrosion in metal textures",
         default=0.22,
         min=0.0,
         max=1.0,
@@ -198,7 +204,7 @@ class VoidShipwrightSettings(bpy.types.PropertyGroup):
     )
     texture_scale: FloatProperty(
         name="Texture Scale",
-        description="Scale of procedural metal grain, rust patches, and panel noise",
+        description="Scale of metal grain, painted panel lines, rust patches, and scratch detail",
         default=1.0,
         min=0.25,
         max=3.0,
