@@ -1,23 +1,1502 @@
 {
-  "schema_version": "1.0.0",
-  "generator": "Void Shipwright",
-  "ship_id": "void_ship_example",
-  "role": "player",
+  "camera_markers": [
+    {
+      "camera_type": "follow",
+      "name": "CAMERA_Follow",
+      "position": [
+        0.0,
+        10.4087,
+        0.9047
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "camera_type": "look_at",
+      "name": "CAMERA_Look_At",
+      "position": [
+        0.0,
+        -0.6939,
+        0.2262
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    }
+  ],
+  "collision_proxies": [
+    {
+      "disabled_by_default": false,
+      "name": "COLLISION_Bridge-colonly",
+      "position": [
+        0.0,
+        -1.3011,
+        0.4775
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.4854,
+        1.0409,
+        0.2262
+      ],
+      "shape": "box",
+      "size": [
+        0.9708,
+        2.0817,
+        0.4523
+      ]
+    },
+    {
+      "disabled_by_default": false,
+      "name": "COLLISION_Cargo-colonly",
+      "position": [
+        0.0,
+        1.0409,
+        -0.1005
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.7628,
+        2.7757,
+        0.3518
+      ],
+      "shape": "box",
+      "size": [
+        1.5255,
+        5.5513,
+        0.7037
+      ]
+    },
+    {
+      "disabled_by_default": false,
+      "name": "COLLISION_Engine-colonly",
+      "position": [
+        0.0,
+        3.5563,
+        0.0
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.1788,
+        1.0409,
+        0.3016
+      ],
+      "shape": "box",
+      "size": [
+        2.3576,
+        2.0817,
+        0.6031
+      ]
+    },
+    {
+      "disabled_by_default": false,
+      "name": "COLLISION_Hull-colonly",
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0401,
+        4.1635,
+        0.6283
+      ],
+      "shape": "box",
+      "size": [
+        2.0802,
+        8.327,
+        1.2565
+      ]
+    }
+  ],
+  "damage_zones": [
+    {
+      "name": "DAMAGE_Bridge",
+      "position": [
+        0.0,
+        -1.3011,
+        0.578
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "zone": "Bridge"
+    },
+    {
+      "name": "DAMAGE_Cargo",
+      "position": [
+        0.0,
+        1.2144,
+        -0.1508
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "zone": "Cargo"
+    },
+    {
+      "name": "DAMAGE_Engine",
+      "position": [
+        0.0,
+        3.6431,
+        0.0
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "zone": "Engine"
+    },
+    {
+      "name": "DAMAGE_Hull",
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "zone": "Hull"
+    },
+    {
+      "name": "DAMAGE_Shield_Generator",
+      "position": [
+        0.0,
+        0.347,
+        0.2764
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "zone": "Shield_Generator"
+    },
+    {
+      "name": "DAMAGE_Weapons",
+      "position": [
+        0.0,
+        -3.1226,
+        0.0
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "zone": "Weapons"
+    }
+  ],
   "faction": "independent",
-  "seed": 42,
-  "variant": "default",
-  "units": "meters",
-  "source_axis": {
-    "forward": "-Y",
-    "up": "Z",
-    "right": "X"
-  },
+  "generator": "Void Shipwright",
   "godot_axis": {
     "forward": "-Z",
-    "up": "Y",
-    "right": "X"
+    "right": "X",
+    "up": "Y"
   },
+  "meshes": [
+    {
+      "mesh_role": "canopy_glass",
+      "name": "MESH_Canopy_Glass",
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "dorsal_fin",
+      "name": "MESH_Dorsal_Fin",
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "engine_cable_lower_01",
+      "name": "MESH_Engine_Cable_Lower_01",
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "engine_cable_lower_02",
+      "name": "MESH_Engine_Cable_Lower_02",
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "engine_cable_upper_01",
+      "name": "MESH_Engine_Cable_Upper_01",
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "engine_cable_upper_02",
+      "name": "MESH_Engine_Cable_Upper_02",
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "engine_left_glow",
+      "name": "MESH_Engine_Left_Glow",
+      "position": [
+        -0.9361,
+        4.6406,
+        -0.0628
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "engine_left_pod",
+      "name": "MESH_Engine_Left_Pod",
+      "position": [
+        -0.9361,
+        3.3828,
+        -0.0628
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "engine_main_glow",
+      "name": "MESH_Engine_Main_Glow",
+      "position": [
+        0.0,
+        5.0309,
+        0.0
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "engine_main_pod",
+      "name": "MESH_Engine_Main_Pod",
+      "position": [
+        0.0,
+        3.6431,
+        0.0
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "engine_right_glow",
+      "name": "MESH_Engine_Right_Glow",
+      "position": [
+        0.9361,
+        4.6406,
+        -0.0628
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "engine_right_pod",
+      "name": "MESH_Engine_Right_Pod",
+      "position": [
+        0.9361,
+        3.3828,
+        -0.0628
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "hull_core",
+      "name": "MESH_Hull_Core",
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "nose_gun_left",
+      "name": "MESH_Nose_Gun_Left",
+      "position": [
+        -0.6241,
+        -4.5104,
+        -0.0251
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "nose_gun_right",
+      "name": "MESH_Nose_Gun_Right",
+      "position": [
+        0.6241,
+        -4.5104,
+        -0.0251
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "raider_variant_dorsal_mission_pod",
+      "name": "MESH_Raider_Variant_Dorsal_Mission_Pod",
+      "position": [
+        0.0,
+        1.3878,
+        0.5392
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "structural_aft_buttress_left",
+      "name": "MESH_Structural_Aft_Buttress_Left",
+      "position": [
+        -0.7974,
+        3.2961,
+        0.1498
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "structural_aft_buttress_right",
+      "name": "MESH_Structural_Aft_Buttress_Right",
+      "position": [
+        0.7974,
+        3.2961,
+        0.1498
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "structural_chine_left_01",
+      "name": "MESH_Structural_Chine_Left_01",
+      "position": [
+        -1.3868,
+        -2.0817,
+        0.07
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "structural_chine_left_02",
+      "name": "MESH_Structural_Chine_Left_02",
+      "position": [
+        -1.3868,
+        0.347,
+        0.0676
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "structural_chine_left_03",
+      "name": "MESH_Structural_Chine_Left_03",
+      "position": [
+        -1.3868,
+        2.6022,
+        0.0298
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "structural_chine_right_01",
+      "name": "MESH_Structural_Chine_Right_01",
+      "position": [
+        1.3868,
+        -2.0817,
+        0.07
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "structural_chine_right_02",
+      "name": "MESH_Structural_Chine_Right_02",
+      "position": [
+        1.3868,
+        0.347,
+        0.0676
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "structural_chine_right_03",
+      "name": "MESH_Structural_Chine_Right_03",
+      "position": [
+        1.3868,
+        2.6022,
+        0.0298
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "structural_recess_frame_left_aft",
+      "name": "MESH_Structural_Recess_Frame_Left_Aft",
+      "position": [
+        -1.5255,
+        1.6724,
+        0.1186
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.0832,
+        0.1041,
+        0.1061
+      ]
+    },
+    {
+      "mesh_role": "structural_recess_frame_left_bottom",
+      "name": "MESH_Structural_Recess_Frame_Left_Bottom",
+      "position": [
+        -1.5255,
+        0.664,
+        0.0126
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.0763,
+        0.9277,
+        0.0151
+      ]
+    },
+    {
+      "mesh_role": "structural_recess_frame_left_fore",
+      "name": "MESH_Structural_Recess_Frame_Left_Fore",
+      "position": [
+        -1.5255,
+        -0.3443,
+        0.1186
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.0832,
+        0.1041,
+        0.1061
+      ]
+    },
+    {
+      "mesh_role": "structural_recess_frame_left_top",
+      "name": "MESH_Structural_Recess_Frame_Left_Top",
+      "position": [
+        -1.5255,
+        0.664,
+        0.2247
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.0901,
+        1.0083,
+        0.0151
+      ]
+    },
+    {
+      "mesh_role": "structural_recess_frame_right_aft",
+      "name": "MESH_Structural_Recess_Frame_Right_Aft",
+      "position": [
+        1.5255,
+        1.6724,
+        0.1186
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.0832,
+        0.1041,
+        0.1061
+      ]
+    },
+    {
+      "mesh_role": "structural_recess_frame_right_bottom",
+      "name": "MESH_Structural_Recess_Frame_Right_Bottom",
+      "position": [
+        1.5255,
+        0.664,
+        0.0126
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.0763,
+        0.9277,
+        0.0151
+      ]
+    },
+    {
+      "mesh_role": "structural_recess_frame_right_fore",
+      "name": "MESH_Structural_Recess_Frame_Right_Fore",
+      "position": [
+        1.5255,
+        -0.3443,
+        0.1186
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.0832,
+        0.1041,
+        0.1061
+      ]
+    },
+    {
+      "mesh_role": "structural_recess_frame_right_top",
+      "name": "MESH_Structural_Recess_Frame_Right_Top",
+      "position": [
+        1.5255,
+        0.664,
+        0.2247
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.0901,
+        1.0083,
+        0.0151
+      ]
+    },
+    {
+      "mesh_role": "structural_shoulder_left_01",
+      "name": "MESH_Structural_Shoulder_Left_01",
+      "position": [
+        -0.7107,
+        -3.1226,
+        0.2089
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.215,
+        0.4337,
+        0.0529
+      ]
+    },
+    {
+      "mesh_role": "structural_shoulder_left_02",
+      "name": "MESH_Structural_Shoulder_Left_02",
+      "position": [
+        -0.5894,
+        -1.5613,
+        0.3984
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.1734,
+        0.5204,
+        0.0529
+      ]
+    },
+    {
+      "mesh_role": "structural_shoulder_left_03",
+      "name": "MESH_Structural_Shoulder_Left_03",
+      "position": [
+        -0.7107,
+        0.1735,
+        0.4308
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.215,
+        0.4337,
+        0.0529
+      ]
+    },
+    {
+      "mesh_role": "structural_shoulder_left_04",
+      "name": "MESH_Structural_Shoulder_Left_04",
+      "position": [
+        -0.5894,
+        1.9083,
+        0.3384
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.1734,
+        0.5204,
+        0.0529
+      ]
+    },
+    {
+      "mesh_role": "structural_shoulder_right_01",
+      "name": "MESH_Structural_Shoulder_Right_01",
+      "position": [
+        0.7107,
+        -3.1226,
+        0.2089
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.215,
+        0.4337,
+        0.0529
+      ]
+    },
+    {
+      "mesh_role": "structural_shoulder_right_02",
+      "name": "MESH_Structural_Shoulder_Right_02",
+      "position": [
+        0.5894,
+        -1.5613,
+        0.3984
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.1734,
+        0.5204,
+        0.0529
+      ]
+    },
+    {
+      "mesh_role": "structural_shoulder_right_03",
+      "name": "MESH_Structural_Shoulder_Right_03",
+      "position": [
+        0.7107,
+        0.1735,
+        0.4308
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.215,
+        0.4337,
+        0.0529
+      ]
+    },
+    {
+      "mesh_role": "structural_shoulder_right_04",
+      "name": "MESH_Structural_Shoulder_Right_04",
+      "position": [
+        0.5894,
+        1.9083,
+        0.3384
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.1734,
+        0.5204,
+        0.0529
+      ]
+    },
+    {
+      "mesh_role": "teal_side_light_l",
+      "name": "MESH_Teal_Side_Light_L",
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "teal_side_light_r",
+      "name": "MESH_Teal_Side_Light_R",
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "teal_wing_light_l",
+      "name": "MESH_Teal_Wing_Light_L",
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "teal_wing_light_r",
+      "name": "MESH_Teal_Wing_Light_R",
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "variant_compact_engine_01",
+      "name": "MESH_Variant_Compact_Engine_01",
+      "position": [
+        -1.0401,
+        4.0768,
+        -0.0251
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "variant_compact_engine_02",
+      "name": "MESH_Variant_Compact_Engine_02",
+      "position": [
+        -0.5201,
+        4.0768,
+        -0.0251
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "variant_compact_engine_03",
+      "name": "MESH_Variant_Compact_Engine_03",
+      "position": [
+        0.0,
+        4.0768,
+        -0.0251
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "variant_compact_engine_04",
+      "name": "MESH_Variant_Compact_Engine_04",
+      "position": [
+        0.5201,
+        4.0768,
+        -0.0251
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "variant_compact_engine_05",
+      "name": "MESH_Variant_Compact_Engine_05",
+      "position": [
+        1.0401,
+        4.0768,
+        -0.0251
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "variant_compact_glow_01",
+      "name": "MESH_Variant_Compact_Glow_01",
+      "position": [
+        -1.0401,
+        4.9441,
+        -0.0251
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "variant_compact_glow_02",
+      "name": "MESH_Variant_Compact_Glow_02",
+      "position": [
+        -0.5201,
+        4.9441,
+        -0.0251
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "variant_compact_glow_03",
+      "name": "MESH_Variant_Compact_Glow_03",
+      "position": [
+        0.0,
+        4.9441,
+        -0.0251
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "variant_compact_glow_04",
+      "name": "MESH_Variant_Compact_Glow_04",
+      "position": [
+        0.5201,
+        4.9441,
+        -0.0251
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "variant_compact_glow_05",
+      "name": "MESH_Variant_Compact_Glow_05",
+      "position": [
+        1.0401,
+        4.9441,
+        -0.0251
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "variant_compact_shoulder_block_left",
+      "name": "MESH_Variant_Compact_Shoulder_Block_Left",
+      "position": [
+        -0.9014,
+        1.7348,
+        0.0817
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.2947,
+        1.3011,
+        0.088
+      ]
+    },
+    {
+      "mesh_role": "variant_compact_shoulder_block_right",
+      "name": "MESH_Variant_Compact_Shoulder_Block_Right",
+      "position": [
+        0.9014,
+        1.7348,
+        0.0817
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.2947,
+        1.3011,
+        0.088
+      ]
+    },
+    {
+      "mesh_role": "ventral_fin",
+      "name": "MESH_Ventral_Fin",
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "ventral_keel",
+      "name": "MESH_Ventral_Keel",
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "weapon_front_01",
+      "name": "MESH_Weapon_Front_01",
+      "position": [
+        -0.2774,
+        -5.2044,
+        -0.0503
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "weapon_front_02",
+      "name": "MESH_Weapon_Front_02",
+      "position": [
+        0.2774,
+        -5.2044,
+        -0.0503
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "weapon_left_pod",
+      "name": "MESH_Weapon_Left_Pod",
+      "position": [
+        -1.6642,
+        -0.6939,
+        -0.0251
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "weapon_right_pod",
+      "name": "MESH_Weapon_Right_Pod",
+      "position": [
+        1.6642,
+        -0.6939,
+        -0.0251
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "wing_left",
+      "name": "MESH_Wing_Left",
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "mesh_role": "wing_right",
+      "name": "MESH_Wing_Right",
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    }
+  ],
   "required_contract": {
+    "collision_proxies": [
+      "COLLISION_Hull-colonly",
+      "COLLISION_Engine-colonly",
+      "COLLISION_Cargo-colonly",
+      "COLLISION_Bridge-colonly"
+    ],
+    "damage_zones": [
+      "DAMAGE_Hull",
+      "DAMAGE_Engine",
+      "DAMAGE_Weapons",
+      "DAMAGE_Cargo",
+      "DAMAGE_Bridge",
+      "DAMAGE_Shield_Generator"
+    ],
     "sockets": [
       "SOCKET_Weapon_Front_01",
       "SOCKET_Weapon_Front_02",
@@ -33,75 +1512,422 @@
       "SOCKET_Target_Lock_Center",
       "SOCKET_Loot_Drop",
       "SOCKET_Boarding_Attach"
-    ],
-    "damage_zones": [
-      "DAMAGE_Hull",
-      "DAMAGE_Engine",
-      "DAMAGE_Weapons",
-      "DAMAGE_Cargo",
-      "DAMAGE_Bridge",
-      "DAMAGE_Shield_Generator"
-    ],
-    "collision_proxies": [
-      "COLLISION_Hull-colonly",
-      "COLLISION_Engine-colonly",
-      "COLLISION_Cargo-colonly",
-      "COLLISION_Bridge-colonly"
     ]
   },
-  "meshes": [
-    {"name": "MESH_Bridge", "position": [0.0, -1.2, 0.6], "rotation_euler": [0.0, 0.0, 0.0], "scale": [0.6, 0.8, 0.25], "mesh_role": "bridge"},
-    {"name": "MESH_Cargo_Spine", "position": [0.0, 0.64, -0.08], "rotation_euler": [0.0, 0.0, 0.0], "scale": [0.9, 3.68, 0.45], "mesh_role": "cargo_spine"},
-    {"name": "MESH_Engine_Left", "position": [-1.2, 3.12, -0.06], "rotation_euler": [0.0, 0.0, 0.0], "scale": [0.45, 1.04, 0.24], "mesh_role": "engine_left"},
-    {"name": "MESH_Engine_Main", "position": [0.0, 3.44, 0.0], "rotation_euler": [0.0, 0.0, 0.0], "scale": [0.8, 0.8, 0.29], "mesh_role": "engine_main"},
-    {"name": "MESH_Engine_Right", "position": [1.2, 3.12, -0.06], "rotation_euler": [0.0, 0.0, 0.0], "scale": [0.45, 1.04, 0.24], "mesh_role": "engine_right"},
-    {"name": "MESH_Hull_Core", "position": [0.0, 0.0, 0.0], "rotation_euler": [0.0, 0.0, 0.0], "scale": [1.4, 2.56, 0.72], "mesh_role": "hull_core"},
-    {"name": "MESH_Hull_Nose", "position": [0.0, -3.12, 0.0], "rotation_euler": [0.0, 0.0, 0.0], "scale": [0.9, 1.28, 0.54], "mesh_role": "hull_nose"},
-    {"name": "MESH_Wing_Left", "position": [-1.65, 0.0, -0.1], "rotation_euler": [0.0, 0.0, 0.0], "scale": [1.5, 1.76, 0.18], "mesh_role": "wing_left"},
-    {"name": "MESH_Wing_Right", "position": [1.65, 0.0, -0.1], "rotation_euler": [0.0, 0.0, 0.0], "scale": [1.5, 1.76, 0.18], "mesh_role": "wing_right"}
-  ],
+  "role": "player",
+  "schema_version": "1.0.0",
+  "seed": 42,
+  "ship_id": "void_ship_example",
   "sockets": [
-    {"name": "SOCKET_Boarding_Attach", "position": [2.0, 0.16, 0.0], "rotation_euler": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0], "socket_type": "boarding"},
-    {"name": "SOCKET_Camera_Follow", "position": [0.0, 9.6, 1.15], "rotation_euler": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0], "socket_type": "camera"},
-    {"name": "SOCKET_Camera_Look_At", "position": [0.0, -0.64, 0.29], "rotation_euler": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0], "socket_type": "camera"},
-    {"name": "SOCKET_Engine_Left_01", "position": [-1.2, 4.0, -0.06], "rotation_euler": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0], "socket_type": "engine"},
-    {"name": "SOCKET_Engine_Main_01", "position": [0.0, 4.32, 0.0], "rotation_euler": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0], "socket_type": "engine"},
-    {"name": "SOCKET_Engine_Right_01", "position": [1.2, 4.0, -0.06], "rotation_euler": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0], "socket_type": "engine"},
-    {"name": "SOCKET_Loot_Drop", "position": [0.0, 1.44, -0.99], "rotation_euler": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0], "socket_type": "loot"},
-    {"name": "SOCKET_Missile_Left_01", "position": [-1.7, -1.92, -0.13], "rotation_euler": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0], "socket_type": "missile"},
-    {"name": "SOCKET_Missile_Right_01", "position": [1.7, -1.92, -0.13], "rotation_euler": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0], "socket_type": "missile"},
-    {"name": "SOCKET_Target_Lock_Center", "position": [0.0, -0.48, 0.0], "rotation_euler": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0], "socket_type": "target"},
-    {"name": "SOCKET_Weapon_Front_01", "position": [-0.4, -4.0, 0.0], "rotation_euler": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0], "socket_type": "weapon"},
-    {"name": "SOCKET_Weapon_Front_02", "position": [0.4, -4.0, 0.0], "rotation_euler": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0], "socket_type": "weapon"},
-    {"name": "SOCKET_Weapon_Left_01", "position": [-2.4, -0.4, 0.0], "rotation_euler": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0], "socket_type": "weapon"},
-    {"name": "SOCKET_Weapon_Right_01", "position": [2.4, -0.4, 0.0], "rotation_euler": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0], "socket_type": "weapon"}
+    {
+      "name": "SOCKET_Boarding_Attach",
+      "position": [
+        1.3868,
+        0.1735,
+        0.0
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "socket_type": "boarding"
+    },
+    {
+      "name": "SOCKET_Camera_Follow",
+      "position": [
+        0.0,
+        10.4087,
+        0.9047
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "socket_type": "camera"
+    },
+    {
+      "name": "SOCKET_Camera_Look_At",
+      "position": [
+        0.0,
+        -0.6939,
+        0.2262
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "socket_type": "camera"
+    },
+    {
+      "name": "SOCKET_Engine_Left_01",
+      "position": [
+        -0.8321,
+        4.337,
+        -0.0503
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "socket_type": "engine"
+    },
+    {
+      "name": "SOCKET_Engine_Main_01",
+      "position": [
+        0.0,
+        4.6839,
+        0.0
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "socket_type": "engine"
+    },
+    {
+      "name": "SOCKET_Engine_Right_01",
+      "position": [
+        0.8321,
+        4.337,
+        -0.0503
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "socket_type": "engine"
+    },
+    {
+      "name": "SOCKET_Loot_Drop",
+      "position": [
+        0.0,
+        1.5613,
+        -0.779
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "socket_type": "loot"
+    },
+    {
+      "name": "SOCKET_Missile_Left_01",
+      "position": [
+        -1.1788,
+        -2.0817,
+        -0.1005
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "socket_type": "missile"
+    },
+    {
+      "name": "SOCKET_Missile_Right_01",
+      "position": [
+        1.1788,
+        -2.0817,
+        -0.1005
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "socket_type": "missile"
+    },
+    {
+      "name": "SOCKET_Target_Lock_Center",
+      "position": [
+        0.0,
+        -0.5204,
+        0.0
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "socket_type": "target"
+    },
+    {
+      "name": "SOCKET_Weapon_Front_01",
+      "position": [
+        -0.2774,
+        -4.337,
+        0.0
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "socket_type": "weapon"
+    },
+    {
+      "name": "SOCKET_Weapon_Front_02",
+      "position": [
+        0.2774,
+        -4.337,
+        0.0
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "socket_type": "weapon"
+    },
+    {
+      "name": "SOCKET_Weapon_Left_01",
+      "position": [
+        -1.6642,
+        -0.4337,
+        0.0
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "socket_type": "weapon"
+    },
+    {
+      "name": "SOCKET_Weapon_Right_01",
+      "position": [
+        1.6642,
+        -0.4337,
+        0.0
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "socket_type": "weapon"
+    }
   ],
-  "collision_proxies": [
-    {"name": "COLLISION_Bridge-colonly", "position": [0.0, -1.2, 0.61], "rotation_euler": [0.0, 0.0, 0.0], "scale": [0.7, 0.96, 0.29], "shape": "box", "size": [1.4, 1.92, 0.58], "disabled_by_default": false},
-    {"name": "COLLISION_Cargo-colonly", "position": [0.0, 0.96, -0.13], "rotation_euler": [0.0, 0.0, 0.0], "scale": [1.1, 2.56, 0.45], "shape": "box", "size": [2.2, 5.12, 0.9], "disabled_by_default": false},
-    {"name": "COLLISION_Engine-colonly", "position": [0.0, 3.28, 0.0], "rotation_euler": [0.0, 0.0, 0.0], "scale": [1.7, 0.96, 0.38], "shape": "box", "size": [3.4, 1.92, 0.76], "disabled_by_default": false},
-    {"name": "COLLISION_Hull-colonly", "position": [0.0, 0.0, 0.0], "rotation_euler": [0.0, 0.0, 0.0], "scale": [1.5, 3.84, 0.8], "shape": "box", "size": [3.0, 7.68, 1.6], "disabled_by_default": false}
-  ],
-  "damage_zones": [
-    {"name": "DAMAGE_Bridge", "position": [0.0, -1.2, 0.74], "rotation_euler": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0], "zone": "Bridge"},
-    {"name": "DAMAGE_Cargo", "position": [0.0, 1.12, -0.19], "rotation_euler": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0], "zone": "Cargo"},
-    {"name": "DAMAGE_Engine", "position": [0.0, 3.36, 0.0], "rotation_euler": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0], "zone": "Engine"},
-    {"name": "DAMAGE_Hull", "position": [0.0, 0.0, 0.0], "rotation_euler": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0], "zone": "Hull"},
-    {"name": "DAMAGE_Shield_Generator", "position": [0.0, 0.32, 0.35], "rotation_euler": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0], "zone": "Shield_Generator"},
-    {"name": "DAMAGE_Weapons", "position": [0.0, -2.88, 0.0], "rotation_euler": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0], "zone": "Weapons"}
-  ],
-  "vfx_markers": [
-    {"name": "VFX_Engine_Left", "position": [-1.2, 4.4, -0.06], "rotation_euler": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0], "vfx_type": "engine_left"},
-    {"name": "VFX_Engine_Main", "position": [0.0, 4.64, 0.0], "rotation_euler": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0], "vfx_type": "engine_main"},
-    {"name": "VFX_Engine_Right", "position": [1.2, 4.4, -0.06], "rotation_euler": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0], "vfx_type": "engine_right"},
-    {"name": "VFX_Explosion_Core", "position": [0.0, 0.0, 0.0], "rotation_euler": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0], "vfx_type": "explosion_core"},
-    {"name": "VFX_Shield_Impact", "position": [0.0, 0.0, 1.25], "rotation_euler": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0], "vfx_type": "shield_impact"}
-  ],
-  "camera_markers": [
-    {"name": "CAMERA_Follow", "position": [0.0, 9.6, 1.15], "rotation_euler": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0], "camera_type": "follow"},
-    {"name": "CAMERA_Look_At", "position": [0.0, -0.64, 0.29], "rotation_euler": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0], "camera_type": "look_at"}
-  ],
+  "source_axis": {
+    "forward": "-Y",
+    "right": "X",
+    "up": "Z"
+  },
   "target_markers": [
-    {"name": "TARGET_Lock_Center", "position": [0.0, -0.48, 0.08], "rotation_euler": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0], "target_type": "lock_center"}
+    {
+      "name": "TARGET_Lock_Center",
+      "position": [
+        0.0,
+        -0.5204,
+        0.0628
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "target_type": "lock_center"
+    },
+    {
+      "name": "TARGET_void_ship_example_Root",
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "target_type": "void_ship_example_root"
+    }
+  ],
+  "units": "meters",
+  "variant": "default",
+  "vfx_markers": [
+    {
+      "name": "VFX_Engine_Left",
+      "position": [
+        -0.8321,
+        4.7707,
+        -0.0503
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "vfx_type": "engine_left"
+    },
+    {
+      "name": "VFX_Engine_Main",
+      "position": [
+        0.0,
+        5.0309,
+        0.0
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "vfx_type": "engine_main"
+    },
+    {
+      "name": "VFX_Engine_Right",
+      "position": [
+        0.8321,
+        4.7707,
+        -0.0503
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "vfx_type": "engine_right"
+    },
+    {
+      "name": "VFX_Explosion_Core",
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "vfx_type": "explosion_core"
+    },
+    {
+      "name": "VFX_Shield_Impact",
+      "position": [
+        0.0,
+        0.0,
+        0.9801
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "vfx_type": "shield_impact"
+    }
   ]
 }

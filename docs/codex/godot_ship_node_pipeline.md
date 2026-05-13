@@ -33,7 +33,7 @@ Gameplay systems should query marker names or metadata, then attach weapons, eng
 5. Run `Project > Tools > Void Shipwright/Build Ship Scene`.
 6. Save the generated scene as a reusable `.tscn`.
 
-When `Texture Workflow` is set to `Painted Textures`, export with materials and image textures enabled. The Blender source meshes include `VS_PaintedUV` UV maps and packed Base Color, Roughness, and Normal images, so Godot receives concrete texture maps instead of Blender-only procedural shader nodes.
+When `Texture Workflow` is set to `Painted Textures`, export with materials and image textures enabled. The Blender source meshes include `VS_PaintedUV` UV maps plus Base Color, glTF-packed Metallic-Roughness, and Normal images, so Godot receives concrete texture maps instead of Blender-only procedural shader nodes.
 
 ## Axis Conversion
 

@@ -68,8 +68,8 @@ def validate_texture_workflow(texture_workflow: str) -> str:
 def validate_texture_resolution(texture_resolution: int) -> int:
     if not isinstance(texture_resolution, int):
         raise ValidationError("Texture resolution must be an integer.")
-    if texture_resolution < 64 or texture_resolution > 1024:
-        raise ValidationError("Texture resolution must be between 64 and 1024.")
+    if texture_resolution < 64 or texture_resolution > 256:
+        raise ValidationError("Texture resolution must be between 64 and 256.")
     return texture_resolution
 
 

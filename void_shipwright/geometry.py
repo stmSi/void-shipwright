@@ -41,14 +41,15 @@ class ShipGenerationConfig:
     hull_length: float = 1.0
     hull_width: float = 1.0
     hull_height: float = 1.0
+    structure_density: float = 0.85
     decal_density: float = 1.0
     wear_amount: float = 0.65
     glow_strength: float = 1.2
     texture_workflow: str = "painted"
-    texture_resolution: int = 64
+    texture_resolution: int = 256
     material_style: str = "gunmetal"
-    rust_amount: float = 0.22
-    scratch_amount: float = 0.55
+    rust_amount: float = 0.08
+    scratch_amount: float = 0.42
     texture_scale: float = 1.0
     weapon_density: float = 0.75
     missile_density: float = 0.65
@@ -60,6 +61,40 @@ class ShipGenerationConfig:
     emissive_hue: tuple[float, float, float] | None = None
     show_helpers: bool = False
     presentation_scene: bool = True
+
+
+@dataclass(frozen=True)
+class ShipVariation:
+    key: str
+    index: int
+
+
+VARIATION_PRESETS = (
+    "blade",
+    "fork",
+    "hammerhead",
+    "outrigger",
+    "twinboom",
+    "keel",
+    "broadwing",
+    "carrier",
+    "compact",
+    "asymmetric",
+)
+
+SUPPRESSED_VISUAL_NAME_FRAGMENTS = (
+    "Armor",
+    "Armored",
+    "Lance",
+    "Light_Slit",
+    "Needle",
+    "Paint_Scuff",
+    "Razor",
+    "Spear",
+    "Winglet",
+    "Nose_Chevron",
+    "Mining_Manipulator",
+)
 
 
 def generate_ship(config: ShipGenerationConfig) -> dict[str, Any]:
@@ -76,6 +111,7 @@ def generate_ship(config: ShipGenerationConfig) -> dict[str, Any]:
     rng = random.Random(config.seed)
     collection = _prepare_collection(config.collection_name, clear_existing=config.clear_existing)
     materials = _create_materials(config.faction, glow_strength=config.glow_strength, config=config)
+    variation = _ship_variation(config)
     dimensions = _dimensions_for(
         config.role,
         rng,
@@ -87,6 +123,7 @@ def generate_ship(config: ShipGenerationConfig) -> dict[str, Any]:
         wing_span=config.wing_span,
         engine_scale=config.engine_scale,
     )
+    dimensions = _apply_ship_variation_dimensions(dimensions, variation)
 
     generated_objects: list[Any] = []
     generated_objects.extend(_create_meshes(collection, materials, dimensions, rng, config))
@@ -120,6 +157,8 @@ def generate_ship(config: ShipGenerationConfig) -> dict[str, Any]:
     root["void_shipwright_role"] = config.role
     root["void_shipwright_faction"] = config.faction
     root["void_shipwright_seed"] = config.seed
+    root["void_shipwright_visual_variant"] = variation.key
+    root["void_shipwright_structure_density"] = config.structure_density
     root["void_shipwright_texture_workflow"] = config.texture_workflow
     root["void_shipwright_texture_resolution"] = config.texture_resolution
     if config.presentation_scene:
@@ -138,6 +177,57 @@ def _stable_int_seed(seed: int, *parts: str) -> int:
             value = ((value ^ ord(char)) * 16777619) & 0xFFFFFFFF
         value = ((value ^ 0x9E3779B9) * 2246822519) & 0xFFFFFFFF
     return value
+
+
+def _ship_variation(config: ShipGenerationConfig) -> ShipVariation:
+    raw_variant = _safe_id((config.variant or "default").strip().lower()) or "default"
+    if raw_variant in VARIATION_PRESETS:
+        return ShipVariation(raw_variant, VARIATION_PRESETS.index(raw_variant))
+
+    seed = _stable_int_seed(config.seed, config.ship_type, config.role, config.faction, raw_variant)
+    index = seed % len(VARIATION_PRESETS)
+    return ShipVariation(VARIATION_PRESETS[index], index)
+
+
+def _apply_ship_variation_dimensions(dimensions: dict[str, float], variation: ShipVariation) -> dict[str, float]:
+    length_scale, width_scale, height_scale, wing_scale, engine_scale = {
+        "blade": (1.18, 0.88, 0.92, 0.95, 1.08),
+        "fork": (1.08, 1.06, 0.94, 1.05, 1.00),
+        "hammerhead": (0.96, 1.22, 1.04, 0.75, 1.08),
+        "outrigger": (1.02, 1.18, 0.98, 1.22, 1.12),
+        "twinboom": (1.04, 1.08, 0.96, 1.10, 1.22),
+        "keel": (1.08, 0.96, 1.22, 0.70, 0.92),
+        "broadwing": (0.98, 1.02, 0.90, 1.48, 1.00),
+        "carrier": (1.14, 1.16, 1.16, 0.58, 0.92),
+        "compact": (0.86, 1.06, 1.03, 0.88, 1.28),
+        "asymmetric": (1.02, 1.12, 0.98, 1.05, 1.04),
+    }[variation.key]
+    return {
+        **dimensions,
+        "length": dimensions["length"] * length_scale,
+        "width": dimensions["width"] * width_scale,
+        "height": dimensions["height"] * height_scale,
+        "wing": dimensions["wing"] * wing_scale,
+        "engine": dimensions["engine"] * engine_scale,
+    }
+
+
+def _side_name(side: int) -> str:
+    return "Left" if side < 0 else "Right"
+
+
+def _is_suppressed_visual_object(name: str) -> bool:
+    return name.startswith("MESH_") and any(fragment in name for fragment in SUPPRESSED_VISUAL_NAME_FRAGMENTS)
+
+
+def _remove_suppressed_visual_objects(objects: list[bpy.types.Object]) -> list[bpy.types.Object]:
+    kept: list[bpy.types.Object] = []
+    for obj in objects:
+        if _is_suppressed_visual_object(obj.name):
+            bpy.data.objects.remove(obj, do_unlink=True)
+        else:
+            kept.append(obj)
+    return kept
 
 
 def _prepare_collection(name: str, *, clear_existing: bool) -> bpy.types.Collection:
@@ -743,6 +833,66 @@ def _dimensions_for(
         height_scale *= 1.42
         wing_span *= 0.45
         engine_scale *= 0.9
+    elif ship_type == "heavy_fighter":
+        length_scale *= 0.98
+        width_scale *= 1.12
+        height_scale *= 0.98
+        wing_span *= 0.96
+        engine_scale *= 1.32
+    elif ship_type == "bomber":
+        length_scale *= 1.18
+        width_scale *= 0.96
+        height_scale *= 1.08
+        wing_span *= 0.74
+        engine_scale *= 1.05
+    elif ship_type == "patrol_cutter":
+        length_scale *= 1.10
+        width_scale *= 1.08
+        height_scale *= 1.18
+        wing_span *= 0.56
+        engine_scale *= 1.04
+    elif ship_type == "explorer":
+        length_scale *= 1.24
+        width_scale *= 0.88
+        height_scale *= 1.06
+        wing_span *= 0.62
+        engine_scale *= 0.95
+    elif ship_type == "dropship":
+        length_scale *= 1.02
+        width_scale *= 1.24
+        height_scale *= 1.32
+        wing_span *= 0.58
+        engine_scale *= 1.16
+    elif ship_type == "mining_ship":
+        length_scale *= 1.12
+        width_scale *= 1.02
+        height_scale *= 1.34
+        wing_span *= 0.48
+        engine_scale *= 0.86
+    elif ship_type == "salvage_ship":
+        length_scale *= 1.08
+        width_scale *= 1.08
+        height_scale *= 1.18
+        wing_span *= 0.54
+        engine_scale *= 0.92
+    elif ship_type == "medical_ship":
+        length_scale *= 1.08
+        width_scale *= 0.92
+        height_scale *= 1.12
+        wing_span *= 0.72
+        engine_scale *= 1.0
+    elif ship_type == "racing_ship":
+        length_scale *= 1.26
+        width_scale *= 0.68
+        height_scale *= 0.72
+        wing_span *= 1.05
+        engine_scale *= 1.58
+    elif ship_type == "luxury_yacht":
+        length_scale *= 1.18
+        width_scale *= 0.94
+        height_scale *= 1.10
+        wing_span *= 0.82
+        engine_scale *= 0.92
     return {
         "length": profile["length"] * jitter * length_scale * hull_length,
         "width": profile["width"] * (1.0 + rng.uniform(-0.04, 0.04)) * width_scale * hull_width,
@@ -825,6 +975,8 @@ def _create_meshes(
     objects.extend(_create_role_features(collection, materials, dimensions, rng, config))
     objects.extend(_create_faction_features(collection, materials, dimensions, rng, config))
     objects.extend(_create_archetype_features(collection, materials, dimensions, rng, config))
+    objects.extend(_create_variation_features(collection, materials, dimensions, rng, config))
+    objects.extend(_create_structural_corner_layer(collection, materials, dimensions, rng, config))
     objects.extend(_create_designer_detail_layer(collection, materials, dimensions, rng, config))
 
     if config.role == "boss" or config.faction in {"sector_navy", "corporate_security"}:
@@ -864,6 +1016,7 @@ def _create_meshes(
             ]
         )
 
+    objects = _remove_suppressed_visual_objects(objects)
     for obj in objects:
         obj["void_shipwright_kind"] = "visual_mesh"
         obj["void_shipwright_seed_offset"] = rng.randint(1, 999999)
@@ -885,6 +1038,26 @@ def _create_archetype_base(
         return _create_gunship_base(collection, materials, dimensions)
     if config.ship_type == "freighter":
         return _create_freighter_base(collection, materials, dimensions, config)
+    if config.ship_type == "heavy_fighter":
+        return _create_heavy_fighter_base(collection, materials, dimensions, rng)
+    if config.ship_type == "bomber":
+        return _create_bomber_base(collection, materials, dimensions, config)
+    if config.ship_type == "patrol_cutter":
+        return _create_patrol_cutter_base(collection, materials, dimensions)
+    if config.ship_type == "explorer":
+        return _create_explorer_base(collection, materials, dimensions)
+    if config.ship_type == "dropship":
+        return _create_dropship_base(collection, materials, dimensions)
+    if config.ship_type == "mining_ship":
+        return _create_mining_ship_base(collection, materials, dimensions)
+    if config.ship_type == "salvage_ship":
+        return _create_salvage_ship_base(collection, materials, dimensions, config)
+    if config.ship_type == "medical_ship":
+        return _create_medical_ship_base(collection, materials, dimensions)
+    if config.ship_type == "racing_ship":
+        return _create_racing_ship_base(collection, materials, dimensions, rng)
+    if config.ship_type == "luxury_yacht":
+        return _create_luxury_yacht_base(collection, materials, dimensions)
     return _create_light_raider_base(collection, materials, dimensions, rng)
 
 
@@ -905,10 +1078,6 @@ def _create_light_raider_base(
         _raider_cockpit(collection, "MESH_Canopy_Glass", length, width, height, materials["glass"]),
         _raider_wing(collection, "MESH_Wing_Left", -1, length, width, height, wing, materials["wing"]),
         _raider_wing(collection, "MESH_Wing_Right", 1, length, width, height, wing, materials["wing"]),
-        _raider_wing_armor(collection, "MESH_Wing_Armor_Left", -1, length, width, height, wing, materials["armor_dark"]),
-        _raider_wing_armor(collection, "MESH_Wing_Armor_Right", 1, length, width, height, wing, materials["armor_dark"]),
-        _raider_winglet(collection, "MESH_Winglet_Left", -1, length, width, height, wing, materials["wing_edge"]),
-        _raider_winglet(collection, "MESH_Winglet_Right", 1, length, width, height, wing, materials["wing_edge"]),
         _smooth_engine_pod(collection, "MESH_Engine_Main_Pod", (0.0, length * 0.42, 0.0), length * 0.28, width * 0.18, height * 0.26 * engine, materials["engine_shell"]),
         _engine_glow(collection, "MESH_Engine_Main_Glow", (0.0, length * 0.58, 0.0), width * 0.13, length * 0.025, materials["glow"]),
         _smooth_engine_pod(collection, "MESH_Engine_Left_Pod", (-width * 0.27, length * 0.39, -height * 0.05), length * 0.24, width * 0.095 * engine, height * 0.18 * engine, materials["engine_shell"]),
@@ -919,8 +1088,8 @@ def _create_light_raider_base(
         _raider_tail_fin(collection, "MESH_Ventral_Fin", length, width, height, -1, materials["underbody"]),
         _weapon_barrel(collection, "MESH_Weapon_Front_01", (-width * 0.08, -length * 0.60, -height * 0.04), width * 0.018, length * 0.26, materials["weapon"]),
         _weapon_barrel(collection, "MESH_Weapon_Front_02", (width * 0.08, -length * 0.60, -height * 0.04), width * 0.018, length * 0.26, materials["weapon"]),
-        _weapon_barrel(collection, "MESH_Nose_Needle_Left", (-width * 0.18, -length * 0.56, -height * 0.02), width * 0.012, length * 0.34, materials["weapon"]),
-        _weapon_barrel(collection, "MESH_Nose_Needle_Right", (width * 0.18, -length * 0.56, -height * 0.02), width * 0.012, length * 0.34, materials["weapon"]),
+        _weapon_barrel(collection, "MESH_Nose_Gun_Left", (-width * 0.18, -length * 0.52, -height * 0.02), width * 0.018, length * 0.18, materials["weapon"]),
+        _weapon_barrel(collection, "MESH_Nose_Gun_Right", (width * 0.18, -length * 0.52, -height * 0.02), width * 0.018, length * 0.18, materials["weapon"]),
     ]
 
 
@@ -944,13 +1113,11 @@ def _create_missile_corvette_base(
             materials["armor_top"],
             bevel=0.014,
         ),
-        _tapered_prism(collection, "MESH_Corvette_Blunt_Prow_Armor", (0.0, -length * 0.47, height * 0.08), length * 0.11, width * 0.11, width * 0.30, height * 0.11, height * 0.22, materials["armor_dark"], bevel=0.012),
         _box(collection, "MESH_Corvette_Raised_Command_Spine", (0.0, length * 0.08, height * 0.66), (width * 0.15, length * 0.30, height * 0.12), materials["system_bay"], bevel=0.010),
         _box(collection, "MESH_Corvette_Bridge_Glass", (0.0, -length * 0.22, height * 0.84), (width * 0.10, length * 0.060, height * 0.050), materials["glass"], bevel=0.008),
         _box(collection, "MESH_Corvette_Port_Ordnance_Bay", (-width * 0.45, length * 0.06, height * 0.07), (width * 0.12, length * 0.31, height * 0.20), materials["system_bay"], bevel=0.012),
         _box(collection, "MESH_Corvette_Starboard_Ordnance_Bay", (width * 0.45, length * 0.06, height * 0.07), (width * 0.12, length * 0.31, height * 0.20), materials["system_bay"], bevel=0.012),
         _box(collection, "MESH_Corvette_Rear_Reactor_Block", (0.0, length * 0.43, -height * 0.02), (width * 0.30, length * 0.12, height * 0.22 * engine), materials["engine_shell"], bevel=0.012),
-        _box(collection, "MESH_Corvette_Ventral_Belly_Armor", (0.0, length * 0.10, -height * 0.42), (width * 0.22, length * 0.36, height * 0.11), materials["underbody"], bevel=0.010),
         _raised_strip_y(collection, "MESH_Corvette_Keel_Radiator", (0.0, length * 0.12, -height * 0.56), length * 0.36, width * 0.09, height * 0.025, materials["engine_shell"]),
     ]
     for index, x_factor in enumerate((-0.26, 0.0, 0.26), start=1):
@@ -979,7 +1146,7 @@ def _create_interceptor_base(
         _engine_glow(collection, "MESH_Interceptor_Glow_Right", (width * 0.18, length * 0.62, -height * 0.02), width * 0.072 * engine, length * 0.024, materials["glow"]),
         _smooth_fin(collection, "MESH_Interceptor_Dorsal_V_Fin", length, width * 0.55, height, 1, materials["wing_edge"]),
     ]
-    objects.extend(_lance_assembly(collection, "MESH_Interceptor_Centerline_Lance", (0.0, -length * 0.66, -height * 0.015), width * 0.010, length * 0.52, materials["weapon"]))
+    objects.append(_weapon_barrel(collection, "MESH_Interceptor_Centerline_Cannon", (0.0, -length * 0.54, -height * 0.015), width * 0.018, length * 0.24, materials["weapon"]))
     for side in (-1, 1):
         objects.append(_interceptor_swept_wing(collection, f"MESH_Interceptor_Swept_Wing_{'Left' if side < 0 else 'Right'}", side, length, width, height, wing, materials["wing"]))
         objects.append(_hard_airfoil_plate(collection, f"MESH_Interceptor_Canard_{'Left' if side < 0 else 'Right'}", [(side * width * 0.08, -length * 0.42), (side * width * 0.22, -length * 0.39), (side * width * 0.34, -length * 0.30), (side * width * 0.12, -length * 0.31)], height * 0.02, height * 0.018, materials["wing_edge"]))
@@ -997,8 +1164,7 @@ def _create_gunship_base(
     engine = dimensions["engine"]
     objects = [
         _gunship_hull(collection, "MESH_Hull_Core", length, width, height, materials["body"]),
-        _plate_prism(collection, "MESH_Gunship_Dorsal_Armor_Slab", [(-width * 0.26, -length * 0.36), (width * 0.26, -length * 0.36), (width * 0.34, length * 0.30), (width * 0.18, length * 0.50), (-width * 0.18, length * 0.50), (-width * 0.34, length * 0.30)], height * 0.44, height * 0.055, materials["armor_top"], bevel=0.014),
-        _box(collection, "MESH_Gunship_Bridge_Armored_Glass", (0.0, -length * 0.24, height * 0.52), (width * 0.12, length * 0.060, height * 0.040), materials["glass"], bevel=0.008),
+        _box(collection, "MESH_Gunship_Bridge_Glass", (0.0, -length * 0.24, height * 0.52), (width * 0.12, length * 0.060, height * 0.040), materials["glass"], bevel=0.008),
         _box(collection, "MESH_Gunship_Left_Weapon_Sponson", (-width * 0.44, -length * 0.02, -height * 0.02), (width * 0.10, length * 0.28, height * 0.13), materials["weapon"], bevel=0.010),
         _box(collection, "MESH_Gunship_Right_Weapon_Sponson", (width * 0.44, -length * 0.02, -height * 0.02), (width * 0.10, length * 0.28, height * 0.13), materials["weapon"], bevel=0.010),
         _smooth_engine_pod(collection, "MESH_Gunship_Engine_Left", (-width * 0.22, length * 0.46, -height * 0.05), length * 0.24, width * 0.10 * engine, height * 0.18 * engine, materials["engine_shell"]),
@@ -1007,7 +1173,7 @@ def _create_gunship_base(
         _engine_glow(collection, "MESH_Gunship_Glow_Right", (width * 0.22, length * 0.61, -height * 0.05), width * 0.070 * engine, length * 0.024, materials["glow"]),
     ]
     for side in (-1, 1):
-        objects.append(_hard_airfoil_plate(collection, f"MESH_Gunship_Armored_Stub_Wing_{'Left' if side < 0 else 'Right'}", [(side * width * 0.24, -length * 0.20), (side * width * 0.55, -length * 0.10), (side * width * 0.60, length * 0.16), (side * width * 0.24, length * 0.22)], -height * 0.09, height * 0.045, materials["wing"]))
+        objects.append(_hard_airfoil_plate(collection, f"MESH_Gunship_Stub_Wing_{'Left' if side < 0 else 'Right'}", [(side * width * 0.24, -length * 0.20), (side * width * 0.55, -length * 0.10), (side * width * 0.60, length * 0.16), (side * width * 0.24, length * 0.22)], -height * 0.09, height * 0.045, materials["wing"]))
         objects.append(_weapon_barrel(collection, f"MESH_Gunship_Heavy_Nose_Cannon_{'Left' if side < 0 else 'Right'}", (side * width * 0.11, -length * 0.54, -height * 0.08), width * 0.020, length * 0.24, materials["weapon"]))
     return objects
 
@@ -1044,6 +1210,239 @@ def _create_freighter_base(
     return objects
 
 
+def _create_heavy_fighter_base(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+    rng: random.Random,
+) -> list[bpy.types.Object]:
+    length = dimensions["length"]
+    width = dimensions["width"]
+    height = dimensions["height"]
+    wing = dimensions["wing"]
+    engine = dimensions["engine"]
+    objects = [
+        _gunship_hull(collection, "MESH_Hull_Core", length, width * 0.82, height * 0.88, materials["body"]),
+        _box(collection, "MESH_HeavyFighter_Canopy_Glass", (0.0, -length * 0.30, height * 0.38), (width * 0.105, length * 0.065, height * 0.050), materials["glass"], bevel=0.007),
+        _box(collection, "MESH_HeavyFighter_Shoulder_Block_Left", (-width * 0.24, -length * 0.02, height * 0.22), (width * 0.11, length * 0.22, height * 0.070), materials["body_panel"], bevel=0.010),
+        _box(collection, "MESH_HeavyFighter_Shoulder_Block_Right", (width * 0.24, -length * 0.02, height * 0.22), (width * 0.11, length * 0.22, height * 0.070), materials["body_panel"], bevel=0.010),
+    ]
+    for side in (-1, 1):
+        objects.append(_hard_airfoil_plate(collection, f"MESH_HeavyFighter_Swept_Wing_{_side_name(side)}", [(side * width * 0.20, -length * 0.18), (side * width * (0.58 + wing * 0.045), -length * 0.07), (side * width * (0.66 + wing * 0.050), length * 0.18), (side * width * 0.30, length * 0.18)], -height * 0.07, height * 0.052, materials["wing"]))
+        objects.append(_smooth_engine_pod(collection, f"MESH_HeavyFighter_Primary_Engine_{_side_name(side)}", (side * width * 0.31, length * 0.44, -height * 0.04), length * 0.27, width * 0.105 * engine, height * 0.175 * engine, materials["engine_shell"]))
+        objects.append(_engine_glow(collection, f"MESH_HeavyFighter_Primary_Glow_{_side_name(side)}", (side * width * 0.31, length * 0.61, -height * 0.04), width * 0.075 * engine, length * 0.022, materials["glow"]))
+        objects.append(_weapon_barrel(collection, f"MESH_HeavyFighter_Nose_Cannon_{_side_name(side)}", (side * width * 0.12, -length * 0.58, -height * 0.05), width * 0.018, length * (0.24 + rng.random() * 0.04), materials["weapon"]))
+    return objects
+
+
+def _create_bomber_base(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+    config: ShipGenerationConfig,
+) -> list[bpy.types.Object]:
+    length = dimensions["length"]
+    width = dimensions["width"]
+    height = dimensions["height"]
+    engine = dimensions["engine"]
+    bay_count = max(2, min(5, round(2 + config.missile_density * 3)))
+    objects = [
+        _faceted_loft_y(collection, "MESH_Hull_Core", [(-length * 0.62, width * 0.035, height * 0.050, -height * 0.02, 0.0), (-length * 0.42, width * 0.17, height * 0.18, 0.0, 0.0), (-length * 0.08, width * 0.28, height * 0.32, height * 0.01, 0.0), (length * 0.32, width * 0.24, height * 0.30, -height * 0.02, 0.0), (length * 0.58, width * 0.12, height * 0.17, -height * 0.04, 0.0)], materials["body"], bevel=0.016, top_bias=0.95, bottom_bias=0.64),
+        _tapered_prism(collection, "MESH_Bomber_Reinforced_Keel", (0.0, length * 0.08, -height * 0.42), length * 0.43, width * 0.070, width * 0.160, height * 0.080, height * 0.135, materials["underbody"], bevel=0.010),
+        _box(collection, "MESH_Bomber_Cockpit_Glass", (0.0, -length * 0.35, height * 0.34), (width * 0.090, length * 0.060, height * 0.045), materials["glass"], bevel=0.007),
+        _box(collection, "MESH_Bomber_Aft_Reactor_Block", (0.0, length * 0.45, -height * 0.02), (width * 0.28, length * 0.11, height * 0.19 * engine), materials["engine_shell"], bevel=0.010),
+    ]
+    for index, y_factor in enumerate((-0.26, -0.12, 0.02, 0.16, 0.30)[:bay_count], start=1):
+        objects.append(_box(collection, f"MESH_Bomber_Ordnance_Door_{index:02d}", (0.0, length * y_factor, -height * 0.56), (width * 0.105, length * 0.035, height * 0.018), materials["ordnance"], bevel=0.004))
+    for side in (-1, 1):
+        objects.append(_hard_airfoil_plate(collection, f"MESH_Bomber_Low_Stabilizer_{_side_name(side)}", [(side * width * 0.19, length * 0.08), (side * width * 0.55, length * 0.16), (side * width * 0.62, length * 0.38), (side * width * 0.24, length * 0.30)], -height * 0.16, height * 0.034, materials["wing"]))
+        objects.append(_engine_glow(collection, f"MESH_Bomber_Engine_Glow_{_side_name(side)}", (side * width * 0.18, length * 0.60, -height * 0.04), width * 0.055 * engine, length * 0.020, materials["glow"]))
+    return objects
+
+
+def _create_patrol_cutter_base(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+) -> list[bpy.types.Object]:
+    length = dimensions["length"]
+    width = dimensions["width"]
+    height = dimensions["height"]
+    engine = dimensions["engine"]
+    objects = [
+        _corvette_hull(collection, "MESH_Hull_Core", length, width * 0.84, height * 0.92, materials["body"]),
+        _tapered_prism(collection, "MESH_Cutter_Prow_Wedge", (0.0, -length * 0.48, height * 0.02), length * 0.12, width * 0.055, width * 0.24, height * 0.070, height * 0.150, materials["armor_dark"], bevel=0.009),
+        _box(collection, "MESH_Cutter_Command_Deck", (0.0, -length * 0.06, height * 0.53), (width * 0.15, length * 0.13, height * 0.090), materials["system_bay"], bevel=0.010),
+        _box(collection, "MESH_Cutter_Bridge_Glass", (0.0, -length * 0.19, height * 0.62), (width * 0.115, length * 0.040, height * 0.035), materials["glass"], bevel=0.006),
+        _box(collection, "MESH_Cutter_Aft_Utility_Block", (0.0, length * 0.42, -height * 0.04), (width * 0.25, length * 0.13, height * 0.18 * engine), materials["engine_shell"], bevel=0.010),
+    ]
+    for side in (-1, 1):
+        objects.append(_box(collection, f"MESH_Cutter_Side_Mission_Rack_{_side_name(side)}", (side * width * 0.41, length * 0.10, -height * 0.05), (width * 0.070, length * 0.24, height * 0.090), materials["system_bay"], bevel=0.008))
+        objects.append(_weapon_barrel(collection, f"MESH_Cutter_Patrol_Gun_{_side_name(side)}", (side * width * 0.13, -length * 0.46, -height * 0.02), width * 0.013, length * 0.18, materials["weapon"]))
+        objects.append(_engine_glow(collection, f"MESH_Cutter_Engine_Glow_{_side_name(side)}", (side * width * 0.18, length * 0.58, -height * 0.04), width * 0.052 * engine, length * 0.019, materials["glow"]))
+    return objects
+
+
+def _create_explorer_base(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+) -> list[bpy.types.Object]:
+    length = dimensions["length"]
+    width = dimensions["width"]
+    height = dimensions["height"]
+    engine = dimensions["engine"]
+    objects = [
+        _faceted_loft_y(collection, "MESH_Hull_Core", [(-length * 0.60, width * 0.030, height * 0.060, -height * 0.02, 0.0), (-length * 0.42, width * 0.12, height * 0.16, 0.0, 0.0), (-length * 0.08, width * 0.20, height * 0.28, height * 0.03, 0.0), (length * 0.28, width * 0.18, height * 0.24, 0.0, 0.0), (length * 0.58, width * 0.075, height * 0.13, -height * 0.02, 0.0)], materials["body"], bevel=0.014, top_bias=1.05, bottom_bias=0.48),
+        _box(collection, "MESH_Explorer_Panoramic_Bridge", (0.0, -length * 0.32, height * 0.34), (width * 0.105, length * 0.080, height * 0.055), materials["glass"], bevel=0.008),
+        _rounded_pod(collection, "MESH_Explorer_Dorsal_Survey_Module", (0.0, length * 0.06, height * 0.46), length * 0.18, width * 0.075, height * 0.080, materials["system_bay"]),
+        _raised_strip_y(collection, "MESH_Explorer_Long_Range_Spine", (0.0, length * 0.14, height * 0.60), length * 0.32, width * 0.020, height * 0.016, materials["accent"]),
+    ]
+    for side in (-1, 1):
+        objects.append(_rounded_pod(collection, f"MESH_Explorer_Fuel_Pod_{_side_name(side)}", (side * width * 0.34, length * 0.18, -height * 0.14), length * 0.27, width * 0.055, height * 0.095, materials["cargo"]))
+        objects.append(_antenna(collection, f"MESH_Explorer_Sensor_Mast_{_side_name(side)}", (side * width * 0.22, -length * 0.20, height * 0.56), width * 0.007, height * 0.32, materials["weapon"]))
+        objects.append(_smooth_engine_pod(collection, f"MESH_Explorer_Endurance_Engine_{_side_name(side)}", (side * width * 0.22, length * 0.43, -height * 0.03), length * 0.22, width * 0.070 * engine, height * 0.115 * engine, materials["engine_shell"]))
+        objects.append(_engine_glow(collection, f"MESH_Explorer_Engine_Glow_{_side_name(side)}", (side * width * 0.22, length * 0.58, -height * 0.03), width * 0.050 * engine, length * 0.018, materials["glow"]))
+    return objects
+
+
+def _create_dropship_base(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+) -> list[bpy.types.Object]:
+    length = dimensions["length"]
+    width = dimensions["width"]
+    height = dimensions["height"]
+    engine = dimensions["engine"]
+    objects = [
+        _tapered_prism(collection, "MESH_Hull_Core", (0.0, 0.0, -height * 0.04), length * 0.56, width * 0.22, width * 0.31, height * 0.27, height * 0.34, materials["body"], bevel=0.014),
+        _box(collection, "MESH_Dropship_Forward_Cockpit_Glass", (0.0, -length * 0.42, height * 0.38), (width * 0.135, length * 0.060, height * 0.055), materials["glass"], bevel=0.007),
+        _box(collection, "MESH_Dropship_Belly_Ramp", (0.0, -length * 0.30, -height * 0.46), (width * 0.19, length * 0.12, height * 0.030), materials["underbody"], bevel=0.006),
+        _box(collection, "MESH_Dropship_Cargo_Cabin", (0.0, length * 0.06, height * 0.11), (width * 0.28, length * 0.32, height * 0.18), materials["body_panel"], bevel=0.010),
+    ]
+    for side in (-1, 1):
+        objects.append(_box(collection, f"MESH_Dropship_Side_Door_{_side_name(side)}", (side * width * 0.34, -length * 0.04, -height * 0.03), (width * 0.030, length * 0.15, height * 0.13), materials["system_bay"], bevel=0.005))
+        objects.append(_smooth_engine_pod(collection, f"MESH_Dropship_Lift_Engine_Front_{_side_name(side)}", (side * width * 0.45, -length * 0.20, -height * 0.08), length * 0.13, width * 0.065 * engine, height * 0.110 * engine, materials["engine_shell"]))
+        objects.append(_smooth_engine_pod(collection, f"MESH_Dropship_Lift_Engine_Rear_{_side_name(side)}", (side * width * 0.45, length * 0.28, -height * 0.08), length * 0.13, width * 0.065 * engine, height * 0.110 * engine, materials["engine_shell"]))
+        objects.append(_engine_glow(collection, f"MESH_Dropship_Main_Glow_{_side_name(side)}", (side * width * 0.24, length * 0.60, -height * 0.06), width * 0.060 * engine, length * 0.020, materials["glow"]))
+    return objects
+
+
+def _create_mining_ship_base(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+) -> list[bpy.types.Object]:
+    length = dimensions["length"]
+    width = dimensions["width"]
+    height = dimensions["height"]
+    engine = dimensions["engine"]
+    objects = [
+        _tapered_prism(collection, "MESH_Hull_Core", (0.0, length * 0.04, -height * 0.02), length * 0.52, width * 0.15, width * 0.25, height * 0.23, height * 0.30, materials["body"], bevel=0.014),
+        _box(collection, "MESH_Mining_Operator_Cab_Glass", (0.0, -length * 0.34, height * 0.37), (width * 0.100, length * 0.060, height * 0.050), materials["glass"], bevel=0.007),
+        _tapered_prism(collection, "MESH_Mining_Cutter_Boom", (0.0, -length * 0.62, -height * 0.05), length * 0.24, width * 0.035, width * 0.095, height * 0.040, height * 0.090, materials["weapon"], bevel=0.006),
+        _box(collection, "MESH_Mining_Processing_Bay", (0.0, length * 0.12, -height * 0.31), (width * 0.19, length * 0.22, height * 0.10), materials["system_bay"], bevel=0.009),
+    ]
+    for side in (-1, 1):
+        objects.append(_rounded_pod(collection, f"MESH_Mining_Ore_Canister_{_side_name(side)}", (side * width * 0.35, length * 0.16, -height * 0.10), length * 0.24, width * 0.070, height * 0.110, materials["cargo"]))
+        objects.append(_engine_glow(collection, f"MESH_Mining_Engine_Glow_{_side_name(side)}", (side * width * 0.20, length * 0.58, -height * 0.03), width * 0.050 * engine, length * 0.018, materials["glow"]))
+    return objects
+
+
+def _create_salvage_ship_base(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+    config: ShipGenerationConfig,
+) -> list[bpy.types.Object]:
+    length = dimensions["length"]
+    width = dimensions["width"]
+    height = dimensions["height"]
+    side = -1 if _stable_int_seed(config.seed, config.variant, "salvage_base") % 2 == 0 else 1
+    objects = [
+        _faceted_loft_y(collection, "MESH_Hull_Core", [(-length * 0.56, width * 0.060, height * 0.080, -height * 0.03, 0.0), (-length * 0.34, width * 0.18, height * 0.22, 0.0, 0.0), (length * 0.02, width * 0.28, height * 0.31, height * 0.01, side * width * 0.025), (length * 0.38, width * 0.22, height * 0.25, -height * 0.02, 0.0), (length * 0.56, width * 0.095, height * 0.14, -height * 0.03, 0.0)], materials["body"], bevel=0.016, top_bias=0.95, bottom_bias=0.58),
+        _box(collection, "MESH_Salvage_Cab_Glass", (side * width * 0.10, -length * 0.32, height * 0.35), (width * 0.085, length * 0.055, height * 0.050), materials["glass"], bevel=0.007),
+        _box(collection, "MESH_Salvage_Processing_Bay", (side * width * 0.28, length * 0.08, -height * 0.11), (width * 0.115, length * 0.28, height * 0.130), materials["system_bay"], bevel=0.009),
+        _rounded_pod(collection, "MESH_Salvage_Scrap_Canister", (-side * width * 0.30, length * 0.20, -height * 0.14), length * 0.25, width * 0.070, height * 0.105, materials["cargo"]),
+    ]
+    for arm_index, arm_side in enumerate((side, -side), start=1):
+        objects.append(_raised_strip_y(collection, f"MESH_Salvage_Grappler_Arm_{arm_index:02d}", (arm_side * width * 0.28, -length * 0.34, -height * 0.08), length * 0.16, width * 0.018, height * 0.014, materials["weapon"]))
+        objects.append(_rounded_pod(collection, f"MESH_Salvage_Grappler_Claw_{arm_index:02d}", (arm_side * width * 0.42, -length * 0.48, -height * 0.08), length * 0.055, width * 0.036, height * 0.034, materials["weapon"]))
+    for glow_side in (-1, 1):
+        objects.append(_engine_glow(collection, f"MESH_Salvage_Engine_Glow_{_side_name(glow_side)}", (glow_side * width * 0.20, length * 0.58, -height * 0.03), width * 0.048, length * 0.018, materials["glow"]))
+    return objects
+
+
+def _create_medical_ship_base(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+) -> list[bpy.types.Object]:
+    length = dimensions["length"]
+    width = dimensions["width"]
+    height = dimensions["height"]
+    engine = dimensions["engine"]
+    objects = [
+        _smooth_hull(collection, "MESH_Hull_Core", length, width * 0.68, height * 0.82, materials["body"], random.Random(17)),
+        _box(collection, "MESH_Medical_Panoramic_Cockpit", (0.0, -length * 0.34, height * 0.37), (width * 0.105, length * 0.075, height * 0.052), materials["glass"], bevel=0.008),
+        _rounded_pod(collection, "MESH_Medical_Triage_Module", (0.0, length * 0.06, -height * 0.08), length * 0.28, width * 0.145, height * 0.150, materials["system_bay"]),
+        _raised_strip_y(collection, "MESH_Medical_Dorsal_Life_Support", (0.0, length * 0.14, height * 0.46), length * 0.22, width * 0.050, height * 0.030, materials["accent"]),
+    ]
+    for side in (-1, 1):
+        objects.append(_rounded_pod(collection, f"MESH_Medical_LifeSupport_Pod_{_side_name(side)}", (side * width * 0.30, length * 0.14, -height * 0.08), length * 0.22, width * 0.060, height * 0.095, materials["cargo"]))
+        objects.append(_raised_strip_y(collection, f"MESH_Medical_Rescue_Light_{_side_name(side)}", (side * width * 0.23, -length * 0.18, height * 0.45), length * 0.075, width * 0.010, height * 0.010, materials["glow"]))
+        objects.append(_smooth_engine_pod(collection, f"MESH_Medical_Quiet_Engine_{_side_name(side)}", (side * width * 0.21, length * 0.43, -height * 0.02), length * 0.20, width * 0.060 * engine, height * 0.100 * engine, materials["engine_shell"]))
+        objects.append(_engine_glow(collection, f"MESH_Medical_Engine_Glow_{_side_name(side)}", (side * width * 0.21, length * 0.57, -height * 0.02), width * 0.044 * engine, length * 0.017, materials["glow"]))
+    return objects
+
+
+def _create_racing_ship_base(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+    rng: random.Random,
+) -> list[bpy.types.Object]:
+    length = dimensions["length"]
+    width = dimensions["width"]
+    height = dimensions["height"]
+    wing = dimensions["wing"]
+    engine = dimensions["engine"]
+    objects = [
+        _interceptor_hull(collection, "MESH_Hull_Core", length, width * 0.62, height * 0.74, materials["body"], rng),
+        _smooth_canopy(collection, "MESH_Racer_Bubble_Canopy", length * 0.78, width * 0.48, height * 0.62, materials["glass"]),
+        _tapered_prism(collection, "MESH_Racer_Nose_Fairing", (0.0, -length * 0.56, -height * 0.01), length * 0.10, width * 0.035, width * 0.060, height * 0.026, height * 0.052, materials["body_panel"], bevel=0.007),
+        _raised_strip_y(collection, "MESH_Racer_Dorsal_Number_Panel", (0.0, length * 0.05, height * 0.28), length * 0.17, width * 0.026, height * 0.010, materials["accent"]),
+    ]
+    for side in (-1, 1):
+        objects.append(_hard_airfoil_plate(collection, f"MESH_Racer_Side_Wing_{_side_name(side)}", [(side * width * 0.12, -length * 0.17), (side * width * (0.48 + wing * 0.075), -length * 0.08), (side * width * (0.62 + wing * 0.080), length * 0.14), (side * width * 0.22, length * 0.12)], -height * 0.055, height * 0.040, materials["wing"]))
+        objects.append(_smooth_engine_pod(collection, f"MESH_Racer_Thrust_Pod_{_side_name(side)}", (side * width * 0.22, length * 0.43, -height * 0.02), length * 0.36, width * 0.080 * engine, height * 0.150 * engine, materials["engine_shell"]))
+        objects.append(_engine_glow(collection, f"MESH_Racer_Thrust_Glow_{_side_name(side)}", (side * width * 0.22, length * 0.66, -height * 0.02), width * 0.058 * engine, length * 0.024, materials["glow"]))
+    return objects
+
+
+def _create_luxury_yacht_base(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+) -> list[bpy.types.Object]:
+    length = dimensions["length"]
+    width = dimensions["width"]
+    height = dimensions["height"]
+    engine = dimensions["engine"]
+    objects = [
+        _smooth_hull(collection, "MESH_Hull_Core", length, width * 0.70, height * 0.86, materials["body"], random.Random(29)),
+        _rounded_pod(collection, "MESH_Yacht_Panoramic_Observation_Lounge", (0.0, -length * 0.18, height * 0.44), length * 0.18, width * 0.120, height * 0.070, materials["glass"]),
+        _raised_strip_y(collection, "MESH_Yacht_Dorsal_Trim_Spine", (0.0, length * 0.12, height * 0.52), length * 0.34, width * 0.018, height * 0.014, materials["accent"]),
+        _tapered_prism(collection, "MESH_Yacht_Smooth_Aft_Tail", (0.0, length * 0.48, -height * 0.02), length * 0.13, width * 0.18, width * 0.10, height * 0.11, height * 0.070, materials["body_panel"], bevel=0.012),
+    ]
+    for side in (-1, 1):
+        objects.append(_hard_airfoil_plate(collection, f"MESH_Yacht_Elegant_Side_Fin_{_side_name(side)}", [(side * width * 0.16, length * 0.02), (side * width * 0.48, length * 0.12), (side * width * 0.54, length * 0.36), (side * width * 0.20, length * 0.28)], -height * 0.08, height * 0.026, materials["wing_edge"]))
+        objects.append(_smooth_engine_pod(collection, f"MESH_Yacht_Integrated_Nacelle_{_side_name(side)}", (side * width * 0.24, length * 0.42, -height * 0.03), length * 0.22, width * 0.060 * engine, height * 0.100 * engine, materials["engine_shell"]))
+        objects.append(_engine_glow(collection, f"MESH_Yacht_Soft_Engine_Glow_{_side_name(side)}", (side * width * 0.24, length * 0.57, -height * 0.03), width * 0.044 * engine, length * 0.017, materials["glow"]))
+    return objects
+
+
 def _corvette_hull(
     collection: bpy.types.Collection,
     name: str,
@@ -1074,9 +1473,9 @@ def _interceptor_hull(
 ) -> bpy.types.Object:
     offset = rng.uniform(-width * 0.006, width * 0.006)
     rings = [
-        (-length * 0.72, width * 0.010, height * 0.018, -height * 0.015, 0.0),
-        (-length * 0.58, width * 0.035, height * 0.060, -height * 0.010, 0.0),
-        (-length * 0.34, width * 0.095, height * 0.150, height * 0.005, offset),
+        (-length * 0.66, width * 0.040, height * 0.055, -height * 0.015, 0.0),
+        (-length * 0.54, width * 0.065, height * 0.090, -height * 0.010, 0.0),
+        (-length * 0.34, width * 0.110, height * 0.155, height * 0.005, offset),
         (-length * 0.05, width * 0.150, height * 0.220, height * 0.015, 0.0),
         (length * 0.28, width * 0.130, height * 0.200, 0.0, -offset),
         (length * 0.58, width * 0.070, height * 0.110, -height * 0.020, 0.0),
@@ -1095,13 +1494,13 @@ def _interceptor_swept_wing(
     material: bpy.types.Material,
 ) -> bpy.types.Object:
     outline = [
-        (side * width * 0.12, -length * 0.20),
-        (side * width * (0.46 + wing * 0.08), -length * 0.07),
-        (side * width * (0.86 + wing * 0.10), length * 0.22),
-        (side * width * 0.36, length * 0.12),
-        (side * width * 0.18, length * 0.35),
+        (side * width * 0.12, -length * 0.19),
+        (side * width * (0.42 + wing * 0.050), -length * 0.08),
+        (side * width * (0.66 + wing * 0.055), length * 0.12),
+        (side * width * (0.58 + wing * 0.035), length * 0.24),
+        (side * width * 0.24, length * 0.25),
     ]
-    return _hard_airfoil_plate(collection, name, outline, -height * 0.065, height * 0.026, material)
+    return _hard_airfoil_plate(collection, name, outline, -height * 0.065, height * 0.044, material)
 
 
 def _gunship_hull(
@@ -1134,8 +1533,8 @@ def _raider_hull(
 ) -> bpy.types.Object:
     offset = rng.uniform(-width * 0.015, width * 0.015)
     rings = [
-        (-length * 0.66, width * 0.018, height * 0.035, -height * 0.02, 0.0),
-        (-length * 0.56, width * 0.06, height * 0.10, -height * 0.015, 0.0),
+        (-length * 0.61, width * 0.055, height * 0.070, -height * 0.02, 0.0),
+        (-length * 0.52, width * 0.10, height * 0.13, -height * 0.015, 0.0),
         (-length * 0.42, width * 0.16, height * 0.22, 0.0, -offset),
         (-length * 0.22, width * 0.28, height * 0.34, height * 0.02, offset),
         (length * 0.02, width * 0.36, height * 0.38, height * 0.01, 0.0),
@@ -1194,12 +1593,12 @@ def _raider_wing(
     outline = [
         (side * width * 0.13, -length * 0.28),
         (side * width * 0.35, -length * 0.23),
-        (side * width * (0.84 + wing * 0.09), -length * 0.09),
-        (side * width * (0.98 + wing * 0.10), length * 0.04),
-        (side * width * 0.62, length * 0.20),
-        (side * width * 0.20, length * 0.34),
+        (side * width * (0.72 + wing * 0.055), -length * 0.10),
+        (side * width * (0.80 + wing * 0.055), length * 0.04),
+        (side * width * 0.58, length * 0.19),
+        (side * width * 0.22, length * 0.32),
     ]
-    return _hard_airfoil_plate(collection, name, outline, -height * 0.08, height * 0.045, material)
+    return _hard_airfoil_plate(collection, name, outline, -height * 0.08, height * 0.060, material)
 
 
 def _raider_wing_armor(
@@ -1256,16 +1655,17 @@ def _raider_tail_fin(
     material: bpy.types.Material,
 ) -> bpy.types.Object:
     z_root = direction * height * 0.28
-    z_tip = direction * height * 0.88
-    half_width = width * 0.025
+    z_tip = direction * height * 0.70
+    half_width = width * 0.030
     vertices = [
         (-half_width, length * 0.18, z_root),
         (half_width, length * 0.18, z_root),
         (-half_width, length * 0.52, z_root * 0.75),
         (half_width, length * 0.52, z_root * 0.75),
-        (0.0, length * 0.47, z_tip),
+        (-half_width * 0.48, length * 0.46, z_tip),
+        (half_width * 0.48, length * 0.46, z_tip),
     ]
-    faces = [(0, 2, 4), (1, 4, 3), (0, 1, 3, 2), (0, 4, 1), (2, 3, 4)]
+    faces = [(0, 2, 4), (1, 5, 3), (0, 1, 3, 2), (2, 3, 5, 4), (4, 5, 1, 0)]
     return _mesh_object(collection, name, vertices, faces, material, bevel=0.008)
 
 
@@ -1315,17 +1715,45 @@ def _hard_airfoil_plate(
     half_thickness: float,
     material: bpy.types.Material,
 ) -> bpy.types.Object:
+    outline = _blunted_airfoil_outline(outline)
     count = len(outline)
+    airfoil_thickness = max(half_thickness * 1.65, half_thickness + 0.002)
     vertices: list[tuple[float, float, float]] = []
     for index, (x, y) in enumerate(outline):
-        crown = 0.45 + 0.35 * sin(pi * index / max(count - 1, 1))
-        vertices.append((x, y, z_center - half_thickness * 0.42))
-        vertices.append((x, y, z_center + half_thickness * crown))
+        crown = 0.55 + 0.35 * sin(pi * index / max(count - 1, 1))
+        vertices.append((x, y, z_center - airfoil_thickness * 0.55))
+        vertices.append((x, y, z_center + airfoil_thickness * crown))
     faces: list[tuple[int, ...]] = [tuple(index * 2 for index in range(count)), tuple(index * 2 + 1 for index in reversed(range(count)))]
     for index in range(count):
         next_index = (index + 1) % count
         faces.append((index * 2, next_index * 2, next_index * 2 + 1, index * 2 + 1))
-    return _mesh_object(collection, name, vertices, faces, material, bevel=0.012)
+    return _mesh_object(collection, name, vertices, faces, material, bevel=max(0.014, airfoil_thickness * 0.15))
+
+
+def _blunted_airfoil_outline(outline: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    if len(outline) < 4:
+        return outline
+
+    blunted: list[tuple[float, float]] = []
+    for index, current in enumerate(outline):
+        previous = outline[index - 1]
+        following = outline[(index + 1) % len(outline)]
+        prev_vec = (previous[0] - current[0], previous[1] - current[1])
+        next_vec = (following[0] - current[0], following[1] - current[1])
+        prev_len = (prev_vec[0] * prev_vec[0] + prev_vec[1] * prev_vec[1]) ** 0.5
+        next_len = (next_vec[0] * next_vec[0] + next_vec[1] * next_vec[1]) ** 0.5
+        if prev_len <= 0.0001 or next_len <= 0.0001:
+            blunted.append(current)
+            continue
+
+        dot = (prev_vec[0] * next_vec[0] + prev_vec[1] * next_vec[1]) / (prev_len * next_len)
+        if dot > 0.42:
+            cut = min(prev_len, next_len) * 0.18
+            blunted.append((current[0] + prev_vec[0] / prev_len * cut, current[1] + prev_vec[1] / prev_len * cut))
+            blunted.append((current[0] + next_vec[0] / next_len * cut, current[1] + next_vec[1] / next_len * cut))
+        else:
+            blunted.append(current)
+    return blunted
 
 
 def _smooth_hull(
@@ -1977,17 +2405,6 @@ def _create_role_features(
                     materials["glow"],
                 )
             )
-        objects.append(
-            _rounded_pod(
-                collection,
-                "MESH_Boss_Armor_Belt",
-                (0.0, length * 0.06, height * 0.02),
-                length * 0.22,
-                width * 0.42,
-                height * 0.08,
-                materials["armor_dark"],
-            )
-        )
 
     if role == "drone":
         objects.append(
@@ -2084,22 +2501,6 @@ def _create_faction_features(
                     width * rng.uniform(0.045, 0.07),
                     height * rng.uniform(0.075, 0.12),
                     materials["cargo"],
-                )
-            )
-
-    if faction in {"sector_navy", "corporate_security"}:
-        for index, x_factor in enumerate((-0.23, 0.23), start=1):
-            x = width * x_factor
-            y = length * 0.04
-            objects.append(
-                _raised_strip_y(
-                    collection,
-                    f"MESH_Regulation_Armor_Plate_{index:02d}",
-                    (x, y, _hull_top_z(length, width, height, x, y, clearance=height * 0.035)),
-                    length * 0.31,
-                    width * 0.08,
-                    height * 0.025,
-                    materials["armor_top"],
                 )
             )
 
@@ -2409,7 +2810,7 @@ def _create_interceptor_features(
     height = dimensions["height"]
     objects: list[bpy.types.Object] = []
     for side in (-1, 1):
-        objects.extend(_lance_assembly(collection, f"MESH_Interceptor_Lance_{'L' if side < 0 else 'R'}", (side * width * 0.26, -length * 0.58, -height * 0.02), width * 0.010, length * 0.38, materials["weapon"]))
+        objects.append(_weapon_barrel(collection, f"MESH_Interceptor_Side_Cannon_{_side_name(side)}", (side * width * 0.26, -length * 0.50, -height * 0.02), width * 0.016, length * 0.20, materials["weapon"]))
         objects.append(_raised_strip_y(collection, f"MESH_Interceptor_Engine_Slit_{'L' if side < 0 else 'R'}", (side * width * 0.31, length * 0.32, _hull_side_z(length, width, height, side * width * 0.31, length * 0.32, clearance=height * 0.05)), length * 0.13, width * 0.012, height * 0.010, materials["glow"]))
     return objects
 
@@ -2446,6 +2847,553 @@ def _create_freighter_features(
     return objects
 
 
+def _create_variation_features(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+    rng: random.Random,
+    config: ShipGenerationConfig,
+) -> list[bpy.types.Object]:
+    variation = _ship_variation(config)
+    objects: list[bpy.types.Object] = []
+    if variation.key == "blade":
+        objects.extend(_create_blade_variant(collection, materials, dimensions))
+    elif variation.key == "fork":
+        objects.extend(_create_fork_variant(collection, materials, dimensions))
+    elif variation.key == "hammerhead":
+        objects.extend(_create_hammerhead_variant(collection, materials, dimensions))
+    elif variation.key == "outrigger":
+        objects.extend(_create_outrigger_variant(collection, materials, dimensions))
+    elif variation.key == "twinboom":
+        objects.extend(_create_twinboom_variant(collection, materials, dimensions))
+    elif variation.key == "keel":
+        objects.extend(_create_keel_variant(collection, materials, dimensions))
+    elif variation.key == "broadwing":
+        objects.extend(_create_broadwing_variant(collection, materials, dimensions))
+    elif variation.key == "carrier":
+        objects.extend(_create_carrier_variant(collection, materials, dimensions))
+    elif variation.key == "compact":
+        objects.extend(_create_compact_variant(collection, materials, dimensions))
+    elif variation.key == "asymmetric":
+        objects.extend(_create_asymmetric_variant(collection, materials, dimensions, config))
+    objects.extend(_create_type_signature_variation(collection, materials, dimensions, variation, rng, config))
+    return objects
+
+
+def _create_structural_corner_layer(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+    rng: random.Random,
+    config: ShipGenerationConfig,
+) -> list[bpy.types.Object]:
+    density = max(0.0, min(1.0, config.structure_density))
+    if density <= 0.01:
+        return []
+
+    length = dimensions["length"]
+    width = dimensions["width"]
+    height = dimensions["height"]
+    detail = _detail_multiplier(config.detail_level)
+    objects: list[bpy.types.Object] = []
+
+    shoulder_slots = (-0.36, -0.18, 0.02, 0.22, 0.40)
+    shoulder_count = max(1, min(len(shoulder_slots), round((2.0 + detail * 2.0) * density)))
+    for side in (-1, 1):
+        for index, y_factor in enumerate(shoulder_slots[:shoulder_count], start=1):
+            y = length * y_factor
+            x = side * width * (0.17 + 0.035 * ((index + (1 if config.ship_type in {"freighter", "missile_corvette", "dropship"} else 0)) % 2))
+            z = _hull_top_z(length, width, height, x, y, clearance=height * (0.055 + 0.008 * (index % 2)))
+            objects.append(
+                _box(
+                    collection,
+                    f"MESH_Structural_Shoulder_{_side_name(side)}_{index:02d}",
+                    (x, y, z),
+                    (
+                        width * (0.050 + 0.012 * (index % 2)),
+                        length * (0.050 + 0.010 * ((index + 1) % 2)),
+                        height * (0.034 + 0.006 * detail),
+                    ),
+                    materials["body_panel"] if index % 2 else materials["system_bay"],
+                    bevel=0.010,
+                )
+            )
+
+    chine_slots = (-0.24, 0.04, 0.30)
+    chine_count = max(1, min(len(chine_slots), round((1.2 + detail * 1.4) * density)))
+    side_x_factor = 0.34 if config.ship_type in {"freighter", "dropship", "mining_ship", "salvage_ship"} else 0.40
+    for side in (-1, 1):
+        for index, y_factor in enumerate(chine_slots[:chine_count], start=1):
+            y = length * y_factor
+            x = side * width * side_x_factor
+            z = _hull_side_z(length, width, height, x, y, clearance=height * (0.012 + index * 0.006))
+            objects.append(
+                _tapered_prism(
+                    collection,
+                    f"MESH_Structural_Chine_{_side_name(side)}_{index:02d}",
+                    (x, y, z),
+                    length * (0.085 + 0.010 * index),
+                    width * 0.022,
+                    width * (0.034 + 0.005 * index),
+                    height * 0.040,
+                    height * (0.052 + 0.006 * index),
+                    materials["underbody"] if index % 2 else materials["body_panel"],
+                    bevel=0.009,
+                )
+            )
+
+    if density >= 0.34:
+        frame_y = length * (0.06 + rng.uniform(-0.035, 0.035))
+        frame_half_length = length * (0.095 + 0.025 * density)
+        frame_half_height = height * (0.064 + 0.024 * density)
+        for side in (-1, 1):
+            x = side * width * (0.44 if config.ship_type not in {"freighter", "dropship"} else 0.36)
+            z = _hull_side_z(length, width, height, x, frame_y, clearance=height * 0.070)
+            objects.extend(
+                [
+                    _box(
+                        collection,
+                        f"MESH_Structural_Recess_Frame_{_side_name(side)}_Top",
+                        (x, frame_y, z + frame_half_height),
+                        (width * 0.026, frame_half_length, height * 0.012),
+                        materials["system_bay"],
+                        bevel=0.004,
+                    ),
+                    _box(
+                        collection,
+                        f"MESH_Structural_Recess_Frame_{_side_name(side)}_Bottom",
+                        (x, frame_y, z - frame_half_height),
+                        (width * 0.022, frame_half_length * 0.92, height * 0.012),
+                        materials["underbody"],
+                        bevel=0.004,
+                    ),
+                    _box(
+                        collection,
+                        f"MESH_Structural_Recess_Frame_{_side_name(side)}_Fore",
+                        (x, frame_y - frame_half_length, z),
+                        (width * 0.024, length * 0.012, frame_half_height),
+                        materials["body_panel"],
+                        bevel=0.004,
+                    ),
+                    _box(
+                        collection,
+                        f"MESH_Structural_Recess_Frame_{_side_name(side)}_Aft",
+                        (x, frame_y + frame_half_length, z),
+                        (width * 0.024, length * 0.012, frame_half_height),
+                        materials["body_panel"],
+                        bevel=0.004,
+                    ),
+                ]
+            )
+
+    if density >= 0.55:
+        for side in (-1, 1):
+            y = length * 0.38
+            x = side * width * (0.23 if config.ship_type not in {"missile_corvette", "gunship"} else 0.30)
+            z = _hull_top_z(length, width, height, x, y, clearance=height * 0.055)
+            objects.append(
+                _tapered_prism(
+                    collection,
+                    f"MESH_Structural_Aft_Buttress_{_side_name(side)}",
+                    (x, y, z),
+                    length * 0.150,
+                    width * 0.048,
+                    width * 0.082,
+                    height * 0.048,
+                    height * 0.075,
+                    materials["engine_shell"],
+                    bevel=0.010,
+                )
+            )
+
+    return objects
+
+
+def _create_blade_variant(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+) -> list[bpy.types.Object]:
+    length = dimensions["length"]
+    width = dimensions["width"]
+    height = dimensions["height"]
+    objects = [
+        _tapered_prism(collection, "MESH_Variant_Blade_Front_Fairing", (0.0, -length * 0.50, -height * 0.015), length * 0.14, width * 0.060, width * 0.120, height * 0.040, height * 0.075, materials["body_panel"], bevel=0.008),
+        _tapered_prism(collection, "MESH_Variant_Blade_Ventral_Keel", (0.0, length * 0.04, -height * 0.50), length * 0.42, width * 0.030, width * 0.100, height * 0.045, height * 0.080, materials["underbody"], bevel=0.008),
+        _side_tail_fin(collection, "MESH_Variant_Blade_Dorsal_Sail", 0, length, width, height, materials["wing_edge"], z_direction=1),
+        _side_tail_fin(collection, "MESH_Variant_Blade_Ventral_Sail", 0, length, width, height, materials["underbody"], z_direction=-1),
+    ]
+    for side in (-1, 1):
+        objects.append(
+            _hard_airfoil_plate(
+                collection,
+                f"MESH_Variant_Blade_Forward_Fin_{_side_name(side)}",
+                [
+                    (side * width * 0.11, -length * 0.37),
+                    (side * width * 0.36, -length * 0.31),
+                    (side * width * 0.52, -length * 0.15),
+                    (side * width * 0.22, -length * 0.16),
+                ],
+                -height * 0.055,
+                height * 0.030,
+                materials["wing_edge"],
+            )
+        )
+    return objects
+
+
+def _create_fork_variant(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+) -> list[bpy.types.Object]:
+    length = dimensions["length"]
+    width = dimensions["width"]
+    height = dimensions["height"]
+    objects: list[bpy.types.Object] = [
+        _box(collection, "MESH_Variant_Fork_Nose_Bridge", (0.0, -length * 0.42, height * 0.015), (width * 0.18, length * 0.060, height * 0.055), materials["system_bay"], bevel=0.008),
+    ]
+    for side in (-1, 1):
+        x = side * width * 0.145
+        objects.append(_tapered_prism(collection, f"MESH_Variant_Fork_Nose_Rail_{_side_name(side)}", (x, -length * 0.54, -height * 0.015), length * 0.15, width * 0.050, width * 0.090, height * 0.036, height * 0.065, materials["body_panel"], bevel=0.008))
+        objects.append(_raised_strip_y(collection, f"MESH_Variant_Fork_Inner_Glow_{_side_name(side)}", (x - side * width * 0.052, -length * 0.56, height * 0.040), length * 0.13, width * 0.006, height * 0.006, materials["glow"]))
+    return objects
+
+
+def _create_hammerhead_variant(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+) -> list[bpy.types.Object]:
+    length = dimensions["length"]
+    width = dimensions["width"]
+    height = dimensions["height"]
+    objects = [
+        _box(collection, "MESH_Variant_Hammerhead_Crosshead", (0.0, -length * 0.43, height * 0.020), (width * 0.42, length * 0.070, height * 0.090), materials["body_panel"], bevel=0.014),
+        _box(collection, "MESH_Variant_Hammerhead_Command_Glass", (0.0, -length * 0.485, height * 0.105), (width * 0.105, length * 0.025, height * 0.026), materials["glass"], bevel=0.006),
+    ]
+    for side in (-1, 1):
+        objects.append(_rounded_pod(collection, f"MESH_Variant_Hammerhead_Cheek_{_side_name(side)}", (side * width * 0.38, -length * 0.42, -height * 0.010), length * 0.070, width * 0.085, height * 0.080, materials["system_bay"]))
+        objects.append(_weapon_barrel(collection, f"MESH_Variant_Hammerhead_Recessed_Gun_{_side_name(side)}", (side * width * 0.37, -length * 0.51, -height * 0.018), width * 0.014, length * 0.13, materials["weapon"]))
+    return objects
+
+
+def _create_outrigger_variant(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+) -> list[bpy.types.Object]:
+    length = dimensions["length"]
+    width = dimensions["width"]
+    height = dimensions["height"]
+    engine = dimensions["engine"]
+    objects: list[bpy.types.Object] = []
+    for side in (-1, 1):
+        objects.append(
+            _hard_airfoil_plate(
+                collection,
+                f"MESH_Variant_Outrigger_Strut_{_side_name(side)}",
+                [
+                    (side * width * 0.20, length * 0.06),
+                    (side * width * 0.62, length * 0.12),
+                    (side * width * 0.68, length * 0.38),
+                    (side * width * 0.26, length * 0.30),
+                ],
+                -height * 0.045,
+                height * 0.032,
+                materials["wing"],
+            )
+        )
+        objects.append(_smooth_engine_pod(collection, f"MESH_Variant_Outrigger_Engine_{_side_name(side)}", (side * width * 0.70, length * 0.36, -height * 0.06), length * 0.25, width * 0.075 * engine, height * 0.125 * engine, materials["engine_shell"]))
+        objects.append(_engine_glow(collection, f"MESH_Variant_Outrigger_Glow_{_side_name(side)}", (side * width * 0.70, length * 0.52, -height * 0.06), width * 0.052 * engine, length * 0.018, materials["glow"]))
+    return objects
+
+
+def _create_twinboom_variant(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+) -> list[bpy.types.Object]:
+    length = dimensions["length"]
+    width = dimensions["width"]
+    height = dimensions["height"]
+    engine = dimensions["engine"]
+    objects: list[bpy.types.Object] = []
+    for side in (-1, 1):
+        objects.append(_rounded_pod(collection, f"MESH_Variant_Twinboom_Boom_{_side_name(side)}", (side * width * 0.30, length * 0.34, -height * 0.065), length * 0.24, width * 0.060, height * 0.105, materials["engine_shell"]))
+        objects.append(_engine_glow(collection, f"MESH_Variant_Twinboom_Glow_{_side_name(side)}", (side * width * 0.30, length * 0.59, -height * 0.065), width * 0.048 * engine, length * 0.017, materials["glow"]))
+        objects.append(_side_tail_fin(collection, f"MESH_Variant_Twinboom_Fin_{_side_name(side)}", side, length, width, height, materials["wing_edge"], z_direction=1))
+    return objects
+
+
+def _create_keel_variant(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+) -> list[bpy.types.Object]:
+    length = dimensions["length"]
+    width = dimensions["width"]
+    height = dimensions["height"]
+    objects = [
+        _tapered_prism(collection, "MESH_Variant_Deep_Keel_Body", (0.0, length * 0.08, -height * 0.58), length * 0.43, width * 0.070, width * 0.150, height * 0.100, height * 0.165, materials["underbody"], bevel=0.012),
+        _raised_strip_y(collection, "MESH_Variant_Keel_Center_Glow", (0.0, length * 0.04, -height * 0.755), length * 0.32, width * 0.014, height * 0.010, materials["glow"]),
+    ]
+    for side in (-1, 1):
+        objects.append(_raised_strip_y(collection, f"MESH_Variant_Keel_Radiator_{_side_name(side)}", (side * width * 0.105, length * 0.10, -height * 0.705), length * 0.28, width * 0.012, height * 0.008, materials["engine_shell"]))
+    return objects
+
+
+def _create_broadwing_variant(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+) -> list[bpy.types.Object]:
+    length = dimensions["length"]
+    width = dimensions["width"]
+    height = dimensions["height"]
+    wing = dimensions["wing"]
+    objects: list[bpy.types.Object] = []
+    for side in (-1, 1):
+        objects.append(
+            _hard_airfoil_plate(
+                collection,
+                f"MESH_Variant_Broadwing_Outer_Wing_{_side_name(side)}",
+                [
+                    (side * width * 0.30, -length * 0.12),
+                    (side * width * (0.74 + wing * 0.060), -length * 0.04),
+                    (side * width * (0.90 + wing * 0.070), length * 0.18),
+                    (side * width * 0.46, length * 0.17),
+                ],
+                -height * 0.090,
+                height * 0.052,
+                materials["wing"],
+            )
+        )
+        objects.append(_rounded_pod(collection, f"MESH_Variant_Broadwing_Tip_Pod_{_side_name(side)}", (side * width * (0.92 + wing * 0.08), length * 0.12, -height * 0.055), length * 0.090, width * 0.030, height * 0.055, materials["system_bay"]))
+    return objects
+
+
+def _create_carrier_variant(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+) -> list[bpy.types.Object]:
+    length = dimensions["length"]
+    width = dimensions["width"]
+    height = dimensions["height"]
+    objects: list[bpy.types.Object] = []
+    for index, y_factor in enumerate((-0.20, 0.02, 0.24), start=1):
+        bay_y = length * y_factor
+        bay_z = _hull_top_z(length, width, height, 0.0, bay_y, clearance=height * 0.11)
+        objects.append(_box(collection, f"MESH_Variant_Carrier_Dorsal_Bay_{index:02d}", (0.0, bay_y, bay_z), (width * 0.20, length * 0.065, height * 0.060), materials["system_bay"], bevel=0.008))
+        for side in (-1, 1):
+            objects.append(_box(collection, f"MESH_Variant_Carrier_Side_Bay_{_side_name(side)}_{index:02d}", (side * width * 0.40, bay_y, _hull_side_z(length, width, height, side * width * 0.40, bay_y, clearance=height * 0.035)), (width * 0.080, length * 0.060, height * 0.075), materials["cargo"], bevel=0.007))
+    return objects
+
+
+def _create_compact_variant(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+) -> list[bpy.types.Object]:
+    length = dimensions["length"]
+    width = dimensions["width"]
+    height = dimensions["height"]
+    engine = dimensions["engine"]
+    objects = [
+        _box(collection, "MESH_Variant_Compact_Shoulder_Block_Left", (-width * 0.26, length * 0.20, height * 0.065), (width * 0.085, length * 0.150, height * 0.070), materials["body_panel"], bevel=0.010),
+        _box(collection, "MESH_Variant_Compact_Shoulder_Block_Right", (width * 0.26, length * 0.20, height * 0.065), (width * 0.085, length * 0.150, height * 0.070), materials["body_panel"], bevel=0.010),
+    ]
+    for index, x_factor in enumerate((-0.30, -0.15, 0.0, 0.15, 0.30), start=1):
+        objects.append(_smooth_engine_pod(collection, f"MESH_Variant_Compact_Engine_{index:02d}", (width * x_factor, length * 0.47, -height * 0.020), length * 0.145, width * 0.046 * engine, height * 0.080 * engine, materials["engine_shell"]))
+        objects.append(_engine_glow(collection, f"MESH_Variant_Compact_Glow_{index:02d}", (width * x_factor, length * 0.57, -height * 0.020), width * 0.033 * engine, length * 0.014, materials["glow"]))
+    return objects
+
+
+def _create_asymmetric_variant(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+    config: ShipGenerationConfig,
+) -> list[bpy.types.Object]:
+    length = dimensions["length"]
+    width = dimensions["width"]
+    height = dimensions["height"]
+    side = -1 if _stable_int_seed(config.seed, config.variant, config.ship_type, "asymmetric_side") % 2 == 0 else 1
+    opposite = -side
+    mission_y = length * 0.18
+    return [
+        _hard_airfoil_plate(
+            collection,
+            f"MESH_Variant_Asymmetric_Load_Boom_{_side_name(side)}",
+            [
+                (side * width * 0.20, -length * 0.06),
+                (side * width * 0.66, length * 0.02),
+                (side * width * 0.70, length * 0.32),
+                (side * width * 0.26, length * 0.27),
+            ],
+            -height * 0.040,
+            height * 0.030,
+            materials["wing"],
+        ),
+        _rounded_pod(collection, f"MESH_Variant_Asymmetric_Mission_Pod_{_side_name(side)}", (side * width * 0.62, mission_y, -height * 0.09), length * 0.16, width * 0.075, height * 0.105, materials["system_bay"]),
+        _smooth_engine_pod(collection, f"MESH_Variant_Asymmetric_Counter_Thruster_{_side_name(opposite)}", (opposite * width * 0.38, length * 0.38, -height * 0.06), length * 0.16, width * 0.060, height * 0.090, materials["engine_shell"]),
+        _engine_glow(collection, f"MESH_Variant_Asymmetric_Counter_Glow_{_side_name(opposite)}", (opposite * width * 0.38, length * 0.50, -height * 0.06), width * 0.042, length * 0.014, materials["glow"]),
+    ]
+
+
+def _create_type_signature_variation(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+    variation: ShipVariation,
+    rng: random.Random,
+    config: ShipGenerationConfig,
+) -> list[bpy.types.Object]:
+    if config.ship_type == "missile_corvette":
+        return _create_corvette_signature_variation(collection, materials, dimensions, variation, config)
+    if config.ship_type == "freighter":
+        return _create_freighter_signature_variation(collection, materials, dimensions, variation, config)
+    if config.ship_type == "interceptor":
+        return _create_interceptor_signature_variation(collection, materials, dimensions, variation)
+    if config.ship_type == "gunship":
+        return _create_gunship_signature_variation(collection, materials, dimensions, variation, config)
+    return _create_raider_signature_variation(collection, materials, dimensions, variation, rng)
+
+
+def _create_corvette_signature_variation(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+    variation: ShipVariation,
+    config: ShipGenerationConfig,
+) -> list[bpy.types.Object]:
+    length = dimensions["length"]
+    width = dimensions["width"]
+    height = dimensions["height"]
+    objects: list[bpy.types.Object] = []
+    if variation.key in {"carrier", "hammerhead", "fork"} or config.missile_density > 0.70:
+        for index, y_factor in enumerate((-0.24, -0.06, 0.12, 0.30), start=1):
+            z = _hull_top_z(length, width, height, 0.0, length * y_factor, clearance=height * 0.16)
+            objects.append(_box(collection, f"MESH_Corvette_Variant_VLS_Battery_{index:02d}", (0.0, length * y_factor, z), (width * 0.13, length * 0.046, height * 0.045), materials["ordnance"], bevel=0.006))
+    if variation.key in {"outrigger", "twinboom", "broadwing"}:
+        for side in (-1, 1):
+            objects.append(_rounded_pod(collection, f"MESH_Corvette_Variant_External_Rack_{_side_name(side)}", (side * width * 0.58, length * 0.18, -height * 0.06), length * 0.21, width * 0.050, height * 0.090, materials["ordnance"]))
+    return objects
+
+
+def _create_freighter_signature_variation(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+    variation: ShipVariation,
+    config: ShipGenerationConfig,
+) -> list[bpy.types.Object]:
+    length = dimensions["length"]
+    width = dimensions["width"]
+    height = dimensions["height"]
+    objects: list[bpy.types.Object] = []
+    stack_count = max(1, min(4, round(1 + config.cargo_density * 3)))
+    if variation.key in {"carrier", "keel", "compact", "hammerhead"}:
+        for index, y_factor in enumerate((-0.24, -0.02, 0.20, 0.40)[:stack_count], start=1):
+            objects.append(_box(collection, f"MESH_Freighter_Variant_Raised_Cargo_{index:02d}", (0.0, length * y_factor, height * 0.50), (width * 0.18, length * 0.080, height * 0.095), materials["cargo"], bevel=0.008))
+    if variation.key in {"outrigger", "twinboom", "asymmetric"}:
+        for side in (-1, 1):
+            objects.append(_smooth_engine_pod(collection, f"MESH_Freighter_Variant_Tug_Engine_{_side_name(side)}", (side * width * 0.54, length * 0.48, -height * 0.04), length * 0.20, width * 0.075, height * 0.125, materials["engine_shell"]))
+            objects.append(_engine_glow(collection, f"MESH_Freighter_Variant_Tug_Glow_{_side_name(side)}", (side * width * 0.54, length * 0.61, -height * 0.04), width * 0.052, length * 0.018, materials["glow"]))
+    return objects
+
+
+def _create_interceptor_signature_variation(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+    variation: ShipVariation,
+) -> list[bpy.types.Object]:
+    length = dimensions["length"]
+    width = dimensions["width"]
+    height = dimensions["height"]
+    objects: list[bpy.types.Object] = []
+    if variation.key in {"blade", "fork", "broadwing"}:
+        for side in (-1, 1):
+            objects.append(_hard_airfoil_plate(collection, f"MESH_Interceptor_Variant_Broad_Canard_{_side_name(side)}", [(side * width * 0.08, -length * 0.48), (side * width * 0.26, -length * 0.45), (side * width * 0.36, -length * 0.34), (side * width * 0.14, -length * 0.36)], height * 0.015, height * 0.028, materials["wing_edge"]))
+    if variation.key in {"compact", "twinboom", "outrigger"}:
+        for side in (-1, 1):
+            objects.append(_smooth_engine_pod(collection, f"MESH_Interceptor_Variant_Wingtip_Booster_{_side_name(side)}", (side * width * 0.48, length * 0.34, -height * 0.075), length * 0.16, width * 0.040, height * 0.070, materials["engine_shell"]))
+            objects.append(_engine_glow(collection, f"MESH_Interceptor_Variant_Wingtip_Glow_{_side_name(side)}", (side * width * 0.48, length * 0.45, -height * 0.075), width * 0.030, length * 0.012, materials["glow"]))
+    return objects
+
+
+def _create_gunship_signature_variation(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+    variation: ShipVariation,
+    config: ShipGenerationConfig,
+) -> list[bpy.types.Object]:
+    length = dimensions["length"]
+    width = dimensions["width"]
+    height = dimensions["height"]
+    objects: list[bpy.types.Object] = []
+    if variation.key in {"hammerhead", "keel", "compact"} or config.weapon_density > 0.80:
+        for side in (-1, 1):
+            objects.append(_box(collection, f"MESH_Gunship_Variant_Casemate_{_side_name(side)}", (side * width * 0.34, -length * 0.18, _hull_side_z(length, width, height, side * width * 0.34, -length * 0.18, clearance=height * 0.055)), (width * 0.095, length * 0.090, height * 0.080), materials["weapon"], bevel=0.009))
+            objects.append(_weapon_barrel(collection, f"MESH_Gunship_Variant_Casemate_Barrel_{_side_name(side)}", (side * width * 0.34, -length * 0.30, -height * 0.025), width * 0.016, length * 0.17, materials["weapon"]))
+    if variation.key in {"broadwing", "outrigger"}:
+        for side in (-1, 1):
+            objects.append(_hard_airfoil_plate(collection, f"MESH_Gunship_Variant_Wide_Stabilizer_{_side_name(side)}", [(side * width * 0.30, length * 0.05), (side * width * 0.70, length * 0.12), (side * width * 0.74, length * 0.34), (side * width * 0.32, length * 0.28)], -height * 0.12, height * 0.038, materials["wing"]))
+    return objects
+
+
+def _create_raider_signature_variation(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+    variation: ShipVariation,
+    rng: random.Random,
+) -> list[bpy.types.Object]:
+    length = dimensions["length"]
+    width = dimensions["width"]
+    height = dimensions["height"]
+    objects: list[bpy.types.Object] = []
+    if variation.key in {"blade", "fork", "asymmetric"}:
+        for side in (-1, 1):
+            y = -length * (0.18 + rng.random() * 0.08)
+            objects.append(_raised_strip_y(collection, f"MESH_Raider_Variant_Shoulder_Intake_{_side_name(side)}", (side * width * 0.24, y, _hull_top_z(length, width, height, side * width * 0.24, y, clearance=height * 0.030)), length * 0.070, width * 0.018, height * 0.010, materials["engine_shell"]))
+    if variation.key in {"carrier", "compact", "hammerhead"}:
+        objects.append(_rounded_pod(collection, "MESH_Raider_Variant_Dorsal_Mission_Pod", (0.0, length * 0.16, _hull_top_z(length, width, height, 0.0, length * 0.16, clearance=height * 0.10)), length * 0.15, width * 0.070, height * 0.065, materials["system_bay"]))
+    return objects
+
+
+def _side_tail_fin(
+    collection: bpy.types.Collection,
+    name: str,
+    side: int,
+    length: float,
+    width: float,
+    height: float,
+    material: bpy.types.Material,
+    *,
+    z_direction: int,
+) -> bpy.types.Object:
+    center_x = side * width * 0.32
+    half_width = width * (0.020 if side else 0.028)
+    y_front = length * 0.22
+    y_back = length * 0.52
+    z_root = height * (0.18 if z_direction > 0 else -0.20)
+    z_tip = height * (0.62 if z_direction > 0 else -0.60)
+    vertices = [
+        (center_x - half_width, y_front, z_root),
+        (center_x + half_width, y_front, z_root),
+        (center_x - half_width, y_back, z_root),
+        (center_x + half_width, y_back, z_root),
+        (center_x - half_width * 0.60, y_back * 0.90, z_tip),
+        (center_x + half_width * 0.60, y_back * 0.90, z_tip),
+    ]
+    faces = [(0, 2, 4), (1, 5, 3), (0, 1, 3, 2), (2, 3, 5, 4), (4, 5, 1, 0)]
+    return _mesh_object(collection, name, vertices, faces, material, bevel=0.012)
+
+
 def _create_designer_detail_layer(
     collection: bpy.types.Collection,
     materials: dict[str, bpy.types.Material],
@@ -2458,47 +3406,8 @@ def _create_designer_detail_layer(
     height = dimensions["height"]
     objects: list[bpy.types.Object] = []
 
-    objects.extend(_create_light_slits(collection, materials, length, width, height, rng, config))
     objects.extend(_create_teal_light_strips(collection, materials, length, width, height, config))
     objects.extend(_create_engine_cable_runs(collection, materials, length, width, height))
-    objects.extend(_create_nose_chevrons(collection, materials, length, width, height, config))
-    objects.extend(_create_paint_scuffs(collection, materials, length, width, height, rng, config))
-    return objects
-
-
-def _create_light_slits(
-    collection: bpy.types.Collection,
-    materials: dict[str, bpy.types.Material],
-    length: float,
-    width: float,
-    height: float,
-    rng: random.Random,
-    config: ShipGenerationConfig,
-) -> list[bpy.types.Object]:
-    objects: list[bpy.types.Object] = []
-    detail = _detail_multiplier(config.detail_level)
-    row_count = max(0, min(6, round((5 if config.role in {"boss", "civilian"} else 3) * detail * config.glow_strength)))
-    for row in range(row_count):
-        y = -length * 0.24 + row * length * 0.105
-        for side in (-1, 1):
-            if rng.random() < 0.18 and config.role not in {"civilian", "boss"}:
-                continue
-            x0 = side * width * rng.uniform(0.13, 0.22)
-            x1 = side * width * rng.uniform(0.21, 0.31)
-            y0 = y + rng.uniform(-length * 0.006, length * 0.006)
-            y1 = y + length * rng.uniform(0.018, 0.032)
-            objects.append(
-                _curve_path(
-                    collection,
-                    f"MESH_Light_Slit_{'L' if side < 0 else 'R'}_{row + 1:02d}",
-                    [
-                        (x0, y0, _hull_top_z(length, width, height, x0, y0, clearance=height * 0.018)),
-                        (x1, y1, _hull_top_z(length, width, height, x1, y1, clearance=height * 0.018)),
-                    ],
-                    materials["window"],
-                    bevel_depth=width * 0.004,
-                )
-            )
     return objects
 
 
@@ -2601,69 +3510,6 @@ def _create_engine_cable_runs(
                 ],
                 materials["engine_shell"],
                 bevel_depth=width * 0.0045,
-            )
-        )
-    return objects
-
-
-def _create_nose_chevrons(
-    collection: bpy.types.Collection,
-    materials: dict[str, bpy.types.Material],
-    length: float,
-    width: float,
-    height: float,
-    config: ShipGenerationConfig,
-) -> list[bpy.types.Object]:
-    objects: list[bpy.types.Object] = []
-    count = max(0, min(4, round(3 * _detail_multiplier(config.detail_level) * config.decal_density)))
-    y_factors = [(-0.48 + index * (0.12 / max(count - 1, 1))) for index in range(count)]
-    for index, y_factor in enumerate(y_factors, start=1):
-        spread = width * (0.04 + index * 0.028)
-        y = length * y_factor
-        left_y = y + length * 0.028
-        right_y = y + length * 0.028
-        objects.append(
-            _curve_path(
-                collection,
-                f"MESH_Nose_Chevron_{index:02d}",
-                [
-                    (-spread, left_y, _hull_top_z(length, width, height, -spread, left_y, clearance=height * 0.016)),
-                    (0.0, y, _hull_top_z(length, width, height, 0.0, y, clearance=height * 0.016)),
-                    (spread, right_y, _hull_top_z(length, width, height, spread, right_y, clearance=height * 0.016)),
-                ],
-                materials["red_decal"],
-                bevel_depth=width * 0.006,
-            )
-        )
-    return objects
-
-
-def _create_paint_scuffs(
-    collection: bpy.types.Collection,
-    materials: dict[str, bpy.types.Material],
-    length: float,
-    width: float,
-    height: float,
-    rng: random.Random,
-    config: ShipGenerationConfig,
-) -> list[bpy.types.Object]:
-    objects: list[bpy.types.Object] = []
-    count = max(0, min(48, round(28 * _detail_multiplier(config.detail_level) * config.wear_amount)))
-    for index in range(count):
-        side = -1 if rng.random() < 0.5 else 1
-        x = side * width * rng.uniform(0.04, 0.38)
-        y = length * rng.uniform(-0.42, 0.46)
-        dx = side * width * rng.uniform(0.015, 0.055)
-        dy = length * rng.uniform(0.010, 0.035)
-        z0 = _hull_top_z(length, width, height, x, y, clearance=height * 0.018)
-        z1 = _hull_top_z(length, width, height, x + dx, y + dy, clearance=height * 0.018)
-        objects.append(
-            _curve_path(
-                collection,
-                f"MESH_Paint_Scuff_{index + 1:02d}",
-                [(x, y, z0), (x + dx, y + dy, z1 + height * rng.uniform(-0.004, 0.004))],
-                materials["wear"],
-                bevel_depth=width * rng.uniform(0.0018, 0.0035),
             )
         )
     return objects

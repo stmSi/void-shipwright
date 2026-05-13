@@ -32,6 +32,16 @@ VALID_SHIP_TYPES = (
     "interceptor",
     "gunship",
     "freighter",
+    "heavy_fighter",
+    "bomber",
+    "patrol_cutter",
+    "explorer",
+    "dropship",
+    "mining_ship",
+    "salvage_ship",
+    "medical_ship",
+    "racing_ship",
+    "luxury_yacht",
 )
 
 VALID_HULL_PROFILES = (

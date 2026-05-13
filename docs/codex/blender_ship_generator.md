@@ -46,27 +46,41 @@ Export the generated mesh collection to a Godot-supported 3D format, then keep t
 
 `Ship Type` selects the visual/equipment archetype:
 
-- `Light Raider`: sharp attack craft.
-- `Missile Corvette`: broad armored hull, blunt prow armor, ordnance deck, missile pod banks, stabilizers, and auxiliary modules.
-- `Interceptor`: narrow needle hull, swept wings, canards, oversized engines, and a centerline lance.
-- `Gunship`: broad armored hull, stub wings, weapon sponsons, heavy nose cannons, and side cannons.
+- `Light Raider`: fast attack craft with clipped hard-surface wings and compact nose guns.
+- `Missile Corvette`: broad reinforced hull, blunt prow, ordnance deck, missile pod banks, stabilizers, and auxiliary modules.
+- `Interceptor`: narrow pursuit hull, clipped swept wings, canards, oversized engines, and compact cannons.
+- `Gunship`: broad weapons platform with stub wings, weapon sponsons, heavy nose cannons, and side cannons.
 - `Freighter`: long truss spine, cargo blocks, side rails, bridge cab, and rear engine tug.
+- `Heavy Fighter`: twin-engine combat craft with broad shoulders, clipped swept wings, and heavy nose guns.
+- `Bomber`: long strike craft with reinforced keel, ordnance doors, and low stabilizers.
+- `Patrol Cutter`: compact security/naval cutter with command deck, mission racks, and cutter prow.
+- `Explorer`: long-range survey ship with sensor masts, fuel pods, and dorsal survey module.
+- `Dropship`: reinforced troop transport with side doors, belly ramp, and lift engines.
+- `Mining Ship`: industrial extractor with cutter boom, ore canisters, and processing bay.
+- `Salvage Ship`: asymmetrical recovery craft with grappler arms, processing bay, and scrap canister.
+- `Medical Ship`: rescue craft with triage module, life-support pods, rescue lights, and quieter engines.
+- `Racing Ship`: slim racing hull with clipped side wings and oversized thrust pods.
+- `Luxury Yacht`: sleek touring hull with panoramic observation lounge, trim spine, and integrated nacelles.
 
 `Hull Profile`, `Hull Length`, `Hull Width`, `Hull Height`, `Wing Span`, and `Engine Scale` control silhouette.
 
+`Structure Density` controls attached hard-surface massing: beveled shoulder blocks, side chine structures, recessed side frames, and aft engine buttresses. These are structural hull pieces rather than floating detail meshes, so higher values make ships read more engineered and corner-rich.
+
+`Variant` now controls visual construction, not only metadata. `default` derives a repeatable variation from ship type, role, faction, and seed. Named presets force a specific silhouette family: `blade`, `fork`, `hammerhead`, `outrigger`, `twinboom`, `keel`, `broadwing`, `carrier`, `compact`, and `asymmetric`. These presets change hull proportions and add connected silhouette modules such as split prongs, outrigger engines, deep keels, cargo bays, VLS batteries, tug engines, and wide stabilizers.
+
 `Weapon Density`, `Missile Density`, `Cargo Density`, and `Asymmetry` control visible ship systems. Missile corvettes respond strongly to `Missile Density`; higher values add more pod banks and more cells per bank.
 
-`Decal Density`, `Wear Amount`, and `Glow Strength` control surface finish, texture-painted livery, chipped edges, and emissive detail. Extra armor shell, top panel, accent spine, panel seam, armor tile, micro vent, raider spike, greeble, wing decal, hull livery stripe, and faction insignia mesh layers are not generated; the add-on keeps surface complexity in nose chevrons, scuffs, lighting strips, and generated texture paint.
+`Decal Density`, `Wear Amount`, and `Glow Strength` control surface finish, texture-painted livery, chipped edges, and emissive detail. Extra armor shell, top panel, accent spine, panel seam, armor tile, micro vent, raider spike, greeble, wing decal, hull livery stripe, faction insignia, light-slit, nose-chevron, paint-scuff, winglet, and mining-manipulator mesh layers are not generated; the add-on keeps surface complexity in lighting strips, engine cable runs, and generated texture paint.
 
-`Texture Workflow` controls how ship surface materials are built. `Painted Textures` is the default and creates packed Base Color, Roughness, and Normal image maps for each part family. `Procedural Shader` keeps the older Blender shader-node workflow available for comparison.
+`Texture Workflow` controls how ship surface materials are built. `Painted Textures` is the default and creates Base Color, glTF-packed Metallic-Roughness, and Normal image maps for each part family. `Procedural Shader` keeps the older Blender shader-node workflow available for comparison.
 
-`Texture Resolution` controls the generated image map size per material family. The default is `64` for responsive iteration. Higher values cost more Blender memory and generation time, but export cleaner texture detail to Godot. Painted material maps are generated lazily only for material families used by the current ship, and identical seed/settings reuse existing maps.
+`Texture Resolution` controls the exported image map size per material family. The default is `256`; for performance, the CPU-heavy painted mask pass samples at `128` internally and upscales to the exported `256` image. `64` and `128` paint at native resolution. The supported range is `64` to `256`.
 
 `Material Style` selects the metal family. Current styles are `Gunmetal`, `Worn Steel`, `Dark Titanium`, `Rusted Iron`, `Oxidized Copper`, and `Painted Composite`.
 
-`Rust`, `Scratches`, and `Texture Scale` control oxide coverage, bright scratched edges, painted panel-line frequency, sparse angular corrosion, roughness breakup, chipped micro scratches, and normal-map strength. The painted texture workflow avoids broad directional bands and brown base-color grain so surfaces read as painted or treated metal rather than wood.
+`Rust`, `Scratches`, and `Texture Scale` control oxide coverage, bright scratched edges, painted panel-line frequency, sparse angular corrosion, roughness breakup, metallic variation, chipped micro scratches, service markings, warning stripes, machined rib/detail lines, fastener/cavity normal detail, and normal-map strength. The painted texture workflow avoids broad directional bands and brown base-color grain so surfaces read as painted or treated metal rather than wood.
 
-Generated ships use separate material families per part role instead of one shared hull material. `Material Style` controls the primary body shell, while wing skins, livery edges, top armor, dark inset armor, underbody structure, heat-stained engine shells, blued weapon metal, cargo pods, system bays, dark inset detail, chipped edge wear, and painted trim use role-specific internal profiles so the model reads like layered hard-surface construction.
+Generated ships use separate material families per part role instead of one shared hull material. `Material Style` controls the primary body shell, while wing skins, livery edges, upper plating, dark inset metal, underbody structure, heat-stained engine shells, blued weapon metal, cargo pods, system bays, dark inset detail, chipped edge wear, and painted trim use role-specific internal profiles so the model reads like layered hard-surface construction.
 
 Every generated mesh receives a `VS_PaintedUV` box-projected UV map so generated image textures can export through glTF/GLB and remain usable in Godot. Painted panel lines and chips are texture data, not extra floating mesh layers.
 

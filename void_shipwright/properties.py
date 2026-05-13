@@ -13,25 +13,35 @@ def _enum_items(values: tuple[str, ...]) -> list[tuple[str, str, str]]:
 
 
 DETAIL_LEVELS = (
-    ("low", "Low", "Sparse armor and surface detail"),
+    ("low", "Low", "Sparse surface detail"),
     ("medium", "Medium", "Balanced surface detail"),
     ("high", "High", "Dense professional hard-surface detail"),
-    ("hero", "Hero", "Maximum armor, decals, wear, and micro detail"),
+    ("hero", "Hero", "Maximum texture, wear, and micro detail"),
 )
 
 HULL_PROFILE_LABELS = {
-    "raider": ("Raider", "Long, sharp, aggressive ambusher proportions"),
-    "needle": ("Needle", "Extra long and narrow silhouette"),
-    "heavy": ("Heavy", "Broader armored silhouette"),
+    "raider": ("Raider", "Long aggressive ambusher proportions with blunted hard-surface wings"),
+    "needle": ("Slim", "Extra long and narrow silhouette with reduced pointiness"),
+    "heavy": ("Heavy", "Broader reinforced silhouette"),
     "cargo": ("Cargo", "Longer utility silhouette with more mass"),
 }
 
 SHIP_TYPE_LABELS = {
-    "light_raider": ("Light Raider", "Fast hit-and-run raider with sharp wings and needle weapons"),
+    "light_raider": ("Light Raider", "Fast hit-and-run raider with clipped hard-surface wings and compact guns"),
     "missile_corvette": ("Missile Corvette", "Heavy area-denial corvette with missile banks and stabilizers"),
     "interceptor": ("Interceptor", "Lean pursuit ship with oversized engines"),
-    "gunship": ("Gunship", "Broad weapons platform with extra armor"),
+    "gunship": ("Gunship", "Broad weapons platform with heavy mounts"),
     "freighter": ("Freighter", "Utility hull with cargo pods and civilian massing"),
+    "heavy_fighter": ("Heavy Fighter", "Twin-engine combat craft with broad shoulders and heavy weapon mounts"),
+    "bomber": ("Bomber", "Long strike craft with internal ordnance bay and reinforced keel"),
+    "patrol_cutter": ("Patrol Cutter", "Small naval/security ship with command deck, cutter prow, and utility racks"),
+    "explorer": ("Explorer", "Survey ship with long-range sensor booms and extended fuel modules"),
+    "dropship": ("Dropship", "Reinforced troop transport with side doors, belly ramp, and lift engines"),
+    "mining_ship": ("Mining Ship", "Industrial extractor with forward cutter boom and ore containers"),
+    "salvage_ship": ("Salvage Ship", "Recovery craft with asymmetrical processing bay and grappler arms"),
+    "medical_ship": ("Medical Ship", "Rescue support craft with triage bay, life-support pods, and clean panels"),
+    "racing_ship": ("Racing Ship", "Slim racing hull with oversized thrust pods and clipped wings"),
+    "luxury_yacht": ("Luxury Yacht", "Sleek touring ship with panoramic glass and smooth nacelles"),
 }
 
 MATERIAL_STYLE_LABELS = {
@@ -40,7 +50,7 @@ MATERIAL_STYLE_LABELS = {
     "dark_titanium": ("Dark Titanium", "Low-reflectance military alloy with subtle blue-gray variation"),
     "rusted_iron": ("Rusted Iron", "Aged industrial iron with oxide patches and rough corrosion"),
     "oxidized_copper": ("Oxidized Copper", "Warm copper/bronze with green-blue oxidation in recesses"),
-    "painted_composite": ("Painted Composite", "Painted armor over metal with exposed chipped edges"),
+    "painted_composite": ("Painted Composite", "Painted composite over metal with exposed chipped edges"),
 }
 
 TEXTURE_WORKFLOW_LABELS = {
@@ -86,7 +96,7 @@ class VoidShipwrightSettings(bpy.types.PropertyGroup):
     )
     variant: StringProperty(
         name="Variant",
-        description="Variant label written to generated metadata",
+        description="Visual variant preset or seed salt. Presets: blade, fork, hammerhead, outrigger, twinboom, keel, broadwing, carrier, compact, asymmetric",
         default="default",
     )
     metadata_path: StringProperty(
@@ -147,6 +157,13 @@ class VoidShipwrightSettings(bpy.types.PropertyGroup):
         min=0.55,
         max=1.8,
     )
+    structure_density: FloatProperty(
+        name="Structure Density",
+        description="Amount of attached beveled corner blocks, hull shoulders, side chines, and frame structures",
+        default=0.85,
+        min=0.0,
+        max=1.0,
+    )
     decal_density: FloatProperty(
         name="Decal Density",
         description="How much painted livery and striping is generated",
@@ -182,23 +199,23 @@ class VoidShipwrightSettings(bpy.types.PropertyGroup):
     )
     texture_resolution: IntProperty(
         name="Texture Resolution",
-        description="Size of each generated painted material map",
-        default=64,
+        description="Size of each exported painted material map. 256 uses half-resolution CPU painting and upscales for faster generation",
+        default=256,
         min=64,
-        max=1024,
+        max=256,
         step=64,
     )
     rust_amount: FloatProperty(
         name="Rust",
         description="Amount of rust, oxidation, and brown/green corrosion in metal textures",
-        default=0.22,
+        default=0.08,
         min=0.0,
         max=1.0,
     )
     scratch_amount: FloatProperty(
         name="Scratches",
         description="Amount of bright scratched metal and high-frequency brushed wear",
-        default=0.55,
+        default=0.42,
         min=0.0,
         max=1.0,
     )

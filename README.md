@@ -9,7 +9,7 @@ This repository contains the first pass of the `Void Shipwright` pipeline:
 ![Void Shipwright generated spaceship sample](screenshot.png)
 
 - A modular Blender 4 add-on in `void_shipwright/`.
-- Deterministic generated texture-paint materials with packed Base Color, Roughness, and Normal maps.
+- Deterministic generated texture-paint materials with Base Color, glTF-packed Metallic-Roughness, and Normal maps.
 - A Godot 4 editor helper in `godot/addons/void_shipwright_importer/`.
 - A JSON metadata contract in `schemas/ship_metadata.schema.json`.
 - Example generated metadata in `examples/generated/void_ship_example.metadata.json`.

@@ -38,6 +38,7 @@ class VOID_SHIPWRIGHT_PT_generator(bpy.types.Panel):
         layout.prop(settings, "hull_height", slider=True)
         layout.prop(settings, "wing_span", slider=True)
         layout.prop(settings, "engine_scale", slider=True)
+        layout.prop(settings, "structure_density", slider=True)
 
         layout.separator()
         layout.label(text="Systems")
