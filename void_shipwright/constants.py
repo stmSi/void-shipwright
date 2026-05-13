@@ -2,7 +2,7 @@
 
 ADDON_NAME = "Void Shipwright"
 ADDON_ID = "void_shipwright"
-SCHEMA_VERSION = "1.0.0"
+SCHEMA_VERSION = "1.1.0"
 
 VALID_ROLES = (
     "player",
@@ -31,7 +31,9 @@ VALID_SHIP_TYPES = (
     "missile_corvette",
     "interceptor",
     "gunship",
+    "boarding_frigate",
     "freighter",
+    "heavy_cruiser",
     "heavy_fighter",
     "bomber",
     "patrol_cutter",
@@ -42,6 +44,7 @@ VALID_SHIP_TYPES = (
     "medical_ship",
     "racing_ship",
     "luxury_yacht",
+    "boss_capital_ship",
 )
 
 VALID_HULL_PROFILES = (
@@ -59,12 +62,25 @@ VALID_DETAIL_LEVELS = (
 )
 
 VALID_MATERIAL_STYLES = (
+    "auto",
     "gunmetal",
     "worn_steel",
     "dark_titanium",
     "rusted_iron",
     "oxidized_copper",
     "painted_composite",
+    "naval_ceramic_armor",
+    "corporate_white_composite",
+    "dark_military_titanium",
+    "black_ops_stealth",
+    "luxury_pearl_alloy",
+    "racing_carbon_composite",
+    "industrial_hazard_plating",
+    "pirate_salvaged_metal",
+    "ancient_iridescent_alloy",
+    "mining_worn_industrial",
+    "medical_rescue_composite",
+    "trade_consortium_cargo_paint",
 )
 
 VALID_TEXTURE_WORKFLOWS = (
@@ -106,6 +122,14 @@ REQUIRED_DAMAGE_MARKERS = (
     "DAMAGE_Cargo",
     "DAMAGE_Bridge",
     "DAMAGE_Shield_Generator",
+)
+
+SUBSYSTEM_DAMAGE_MARKERS = (
+    "DAMAGE_Power_Plant",
+    "DAMAGE_Cooler",
+    "DAMAGE_Life_Support",
+    "DAMAGE_Scanner",
+    "DAMAGE_Boarding_Defense",
 )
 
 REQUIRED_COLLISION_PROXIES = (

@@ -71,6 +71,28 @@
       "type": "string",
       "minLength": 1
     },
+    "ship_frame": {
+      "type": "string",
+      "enum": [
+        "light_raider",
+        "interceptor",
+        "gunship",
+        "boarding_frigate",
+        "missile_corvette",
+        "freighter",
+        "heavy_cruiser",
+        "mining_ship",
+        "salvage_ship",
+        "medical_ship",
+        "racing_ship",
+        "luxury_yacht",
+        "boss_capital_ship"
+      ]
+    },
+    "ship_frame_definition": {
+      "type": "object",
+      "additionalProperties": true
+    },
     "units": {
       "type": "string",
       "const": "meters"
@@ -127,6 +149,24 @@
     "target_markers": {
       "type": "array",
       "items": {"$ref": "#/$defs/target_entry"}
+    },
+    "hardpoints": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/hardpoint_entry"}
+    },
+    "component_slots": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/component_slot_entry"}
+    },
+    "equipment_recommendations": {
+      "$ref": "#/$defs/equipment_recommendations"
+    },
+    "performance_baseline": {
+      "$ref": "#/$defs/performance_baseline"
+    },
+    "subsystem_layout": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/subsystem_entry"}
     }
   },
   "$defs": {
@@ -177,7 +217,7 @@
             "name": {"pattern": "^SOCKET_"},
             "socket_type": {
               "type": "string",
-              "enum": ["weapon", "missile", "engine", "camera", "target", "loot", "boarding", "generic"]
+              "enum": ["weapon", "missile", "engine", "camera", "target", "loot", "boarding", "hardpoint", "generic"]
             }
           }
         }
@@ -206,7 +246,18 @@
           "required": ["zone"],
           "properties": {
             "name": {"pattern": "^DAMAGE_"},
-            "zone": {"type": "string"}
+            "zone": {"type": "string"},
+            "subsystem": {"type": "string"},
+            "damage_multiplier": {"type": "number"},
+            "critical_threshold": {"type": "number"},
+            "linked_hardpoints": {
+              "type": "array",
+              "items": {"type": "string"}
+            },
+            "linked_components": {
+              "type": "array",
+              "items": {"type": "string"}
+            }
           }
         }
       ]
@@ -255,6 +306,169 @@
       "minItems": 3,
       "maxItems": 3,
       "items": {"type": "number"}
+    },
+    "hardpoint_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "type",
+        "size",
+        "position",
+        "rotation",
+        "allowed_equipment_types",
+        "allowed_mount_modes",
+        "symmetry_group",
+        "required",
+        "optional",
+        "visual_socket_name",
+        "gameplay_socket_name"
+      ],
+      "properties": {
+        "name": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$"},
+        "type": {
+          "type": "string",
+          "enum": [
+            "weapon_fixed",
+            "weapon_gimbal",
+            "turret",
+            "missile_rack",
+            "torpedo_rack",
+            "utility",
+            "mining",
+            "salvage",
+            "tractor",
+            "shield",
+            "engine",
+            "maneuver_thruster",
+            "cargo",
+            "boarding",
+            "scanner",
+            "countermeasure",
+            "docking",
+            "cosmetic"
+          ]
+        },
+        "size": {"type": "integer", "minimum": 1, "maximum": 10},
+        "position": {"$ref": "#/$defs/vector3"},
+        "rotation": {"$ref": "#/$defs/vector3"},
+        "allowed_equipment_types": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "allowed_mount_modes": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "symmetry_group": {"type": "string"},
+        "required": {"type": "boolean"},
+        "optional": {"type": "boolean"},
+        "visual_socket_name": {"type": "string", "pattern": "^SOCKET_HP_"},
+        "gameplay_socket_name": {"type": "string", "pattern": "^SOCKET_"}
+      }
+    },
+    "component_slot_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "display_name", "slot_type", "size", "required", "optional", "role_tags"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$"},
+        "display_name": {"type": "string"},
+        "slot_type": {
+          "type": "string",
+          "enum": [
+            "power_plant",
+            "cooler",
+            "shield_generator",
+            "quantum_or_warp_drive",
+            "radar",
+            "scanner",
+            "life_support",
+            "avionics",
+            "armor_plating",
+            "cargo_module",
+            "crew_module",
+            "repair_module",
+            "stealth_module"
+          ]
+        },
+        "size": {"type": "integer", "minimum": 1, "maximum": 10},
+        "required": {"type": "boolean"},
+        "optional": {"type": "boolean"},
+        "role_tags": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    },
+    "equipment_recommendations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["loadout_id", "notes", "equipment", "components"],
+      "properties": {
+        "loadout_id": {"type": "string"},
+        "notes": {"type": "string"},
+        "equipment": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["hardpoint", "equipment_id"],
+            "properties": {
+              "hardpoint": {"type": "string"},
+              "equipment_id": {"type": "string"}
+            }
+          }
+        },
+        "components": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["slot", "component_id"],
+            "properties": {
+              "slot": {"type": "string"},
+              "component_id": {"type": "string"}
+            }
+          }
+        }
+      }
+    },
+    "performance_baseline": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "base_hull_hp": {"type": "number"},
+        "base_shield_capacity": {"type": "number"},
+        "mass": {"type": "number"},
+        "cargo_capacity": {"type": "number"},
+        "crew_capacity": {"type": "number"},
+        "power_output": {"type": "number"},
+        "heat_capacity": {"type": "number"},
+        "cooling_capacity": {"type": "number"},
+        "maneuverability": {"type": "number"},
+        "max_speed": {"type": "number"},
+        "boost_strength": {"type": "number"}
+      }
+    },
+    "subsystem_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "subsystem", "damage_multiplier", "critical_threshold", "linked_hardpoints", "linked_components"],
+      "properties": {
+        "name": {"type": "string", "pattern": "^DAMAGE_"},
+        "subsystem": {"type": "string"},
+        "damage_multiplier": {"type": "number"},
+        "critical_threshold": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+        "linked_hardpoints": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "linked_components": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
     }
   }
 }

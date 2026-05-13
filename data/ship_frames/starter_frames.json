@@ -1,0 +1,19 @@
+{
+  "source": "void_shipwright.modular.FRAME_DEFINITIONS",
+  "frames": [
+    "light_raider",
+    "interceptor",
+    "gunship",
+    "boarding_frigate",
+    "missile_corvette",
+    "freighter",
+    "heavy_cruiser",
+    "mining_ship",
+    "salvage_ship",
+    "medical_ship",
+    "racing_ship",
+    "luxury_yacht",
+    "boss_capital_ship"
+  ],
+  "notes": "The Blender add-on's Python frame definitions are authoritative for generation. This JSON index exposes the supported frame IDs for designers and later runtime import."
+}

@@ -16,12 +16,16 @@ from .constants import (
     REQUIRED_COLLISION_PROXIES,
     REQUIRED_DAMAGE_MARKERS,
     REQUIRED_SOCKETS,
+    SUBSYSTEM_DAMAGE_MARKERS,
     REQUIRED_VFX_MARKERS,
     ROLE_PROFILES,
 )
+from .design_language import DesignLanguage, quality_multiplier, resolve_design_language
+from .material_library import PREMIUM_STYLE_PROFILES, effective_texture_resolution, material_language_multiplier, recommended_style_for
 from .metadata import build_metadata
-from .textures import painted_metal_material
-from .validation import validate_detail_level, validate_faction, validate_hull_profile, validate_material_style, validate_role, validate_seed, validate_ship_type, validate_texture_resolution, validate_texture_workflow
+from .modular import build_component_slots, build_equipment_recommendations, build_hardpoints, build_subsystem_layout, frame_definition, performance_baseline, resolve_ship_frame
+from .textures import emissive_pbr_material, painted_metal_material, premium_glass_material
+from .validation import validate_component_slot_preset, validate_design_language, validate_detail_level, validate_faction, validate_hardpoint_preset, validate_hull_profile, validate_material_complexity, validate_material_style, validate_role, validate_seed, validate_ship_frame, validate_ship_type, validate_silhouette_bias, validate_texture_quality, validate_texture_resolution, validate_texture_workflow, validate_visual_quality
 
 
 @dataclass(frozen=True)
@@ -30,11 +34,15 @@ class ShipGenerationConfig:
     faction: str
     seed: int
     ship_type: str = "light_raider"
+    ship_frame: str = "auto"
     ship_id: str = "void_ship"
     variant: str = "default"
     collection_name: str = "Void Shipwright Generated"
     clear_existing: bool = True
     detail_level: str = "hero"
+    visual_quality: str = "hero"
+    design_language: str = "auto"
+    silhouette_bias: str = "balanced"
     hull_profile: str = "raider"
     wing_span: float = 1.0
     engine_scale: float = 1.0
@@ -42,12 +50,42 @@ class ShipGenerationConfig:
     hull_width: float = 1.0
     hull_height: float = 1.0
     structure_density: float = 0.85
+    surface_geometry_density: float = 0.80
+    armor_layer_density: float = 0.70
+    panel_geometry_density: float = 0.70
+    engine_complexity: float = 0.90
+    cockpit_bridge_complexity: float = 0.80
+    faction_geometry_influence: float = 0.80
+    avoid_boxy_shapes: bool = True
+    hardpoint_preset: str = "frame_default"
+    component_slot_preset: str = "frame_default"
+    generate_loadout_metadata: bool = True
     decal_density: float = 1.0
     wear_amount: float = 0.65
     glow_strength: float = 1.2
     texture_workflow: str = "painted"
-    texture_resolution: int = 256
-    material_style: str = "gunmetal"
+    texture_quality: str = "standard"
+    texture_resolution: int = 512
+    material_style: str = "auto"
+    material_complexity: str = "high"
+    paint_layer_strength: float = 0.82
+    roughness_variation: float = 0.65
+    metallic_variation: float = 0.45
+    edge_wear_amount: float = 0.34
+    cavity_dirt_amount: float = 0.42
+    heat_stain_amount: float = 0.62
+    soot_amount: float = 0.28
+    decal_amount: float = 0.45
+    livery_amount: float = 0.50
+    emissive_density: float = 0.40
+    glass_tint: float = 0.62
+    engine_heat_intensity: float = 0.75
+    faction_material_influence: float = 0.85
+    generate_emissive_map: bool = True
+    generate_ao_map: bool = True
+    generate_decal_mask: bool = False
+    generate_material_id_mask: bool = False
+    export_texture_maps: bool = True
     rust_amount: float = 0.08
     scratch_amount: float = 0.42
     texture_scale: float = 1.0
@@ -60,6 +98,8 @@ class ShipGenerationConfig:
     accent_hue: tuple[float, float, float] | None = None
     emissive_hue: tuple[float, float, float] | None = None
     show_helpers: bool = False
+    show_hardpoint_helpers: bool = False
+    show_design_helpers: bool = False
     presentation_scene: bool = True
 
 
@@ -80,11 +120,30 @@ VARIATION_PRESETS = (
     "carrier",
     "compact",
     "asymmetric",
+    "arrowhead",
+    "manta",
+    "split_nose",
+    "forked_prow",
+    "crescent",
+    "needle",
+    "dagger",
+    "hammerhead_refined",
+    "cathedral_capital",
+    "carrier_spine",
+    "luxury_swan",
+    "military_wedge",
+    "industrial_frame",
+    "asym_salvage",
+    "ring_engine",
+    "tri_engine",
+    "wide_nacelle",
+    "blade_wing",
+    "deep_keel",
+    "armored_citadel",
+    "railgun_spine",
 )
 
 SUPPRESSED_VISUAL_NAME_FRAGMENTS = (
-    "Armor",
-    "Armored",
     "Lance",
     "Light_Slit",
     "Needle",
@@ -96,15 +155,30 @@ SUPPRESSED_VISUAL_NAME_FRAGMENTS = (
     "Mining_Manipulator",
 )
 
+VISUAL_BEVEL_MIN = 0.0025
+VISUAL_BEVEL_MAX = 0.045
+VISUAL_AUTO_BEVEL_RATIO = 0.018
+HARD_SURFACE_RING_SEGMENTS = 12
+ROUND_DETAIL_SEGMENTS = 32
+ENGINE_DETAIL_SEGMENTS = 32
+
 
 def generate_ship(config: ShipGenerationConfig) -> dict[str, Any]:
     validate_role(config.role)
     validate_faction(config.faction)
     validate_ship_type(config.ship_type)
+    validate_ship_frame(config.ship_frame)
+    validate_hardpoint_preset(config.hardpoint_preset)
+    validate_component_slot_preset(config.component_slot_preset)
     validate_hull_profile(config.hull_profile)
     validate_detail_level(config.detail_level)
+    validate_visual_quality(config.visual_quality)
+    validate_design_language(config.design_language)
+    validate_silhouette_bias(config.silhouette_bias)
     validate_material_style(config.material_style)
+    validate_material_complexity(config.material_complexity)
     validate_texture_workflow(config.texture_workflow)
+    validate_texture_quality(config.texture_quality)
     validate_texture_resolution(config.texture_resolution)
     validate_seed(config.seed)
 
@@ -112,6 +186,7 @@ def generate_ship(config: ShipGenerationConfig) -> dict[str, Any]:
     collection = _prepare_collection(config.collection_name, clear_existing=config.clear_existing)
     materials = _create_materials(config.faction, glow_strength=config.glow_strength, config=config)
     variation = _ship_variation(config)
+    design_language = resolve_design_language(config.ship_type, config.faction, config.design_language)
     dimensions = _dimensions_for(
         config.role,
         rng,
@@ -124,12 +199,17 @@ def generate_ship(config: ShipGenerationConfig) -> dict[str, Any]:
         engine_scale=config.engine_scale,
     )
     dimensions = _apply_ship_variation_dimensions(dimensions, variation)
+    dimensions = _apply_design_language_dimensions(dimensions, config, design_language)
+    ship_frame = resolve_ship_frame(config.ship_type, config.role, config.ship_frame)
+    hardpoints = build_hardpoints(ship_frame, dimensions, config.hardpoint_preset)
+    component_slots = build_component_slots(ship_frame, config.component_slot_preset)
+    subsystem_layout = build_subsystem_layout(hardpoints, component_slots)
 
     generated_objects: list[Any] = []
     generated_objects.extend(_create_meshes(collection, materials, dimensions, rng, config))
     generated_objects.extend(_create_collision_proxies(collection, dimensions))
-    generated_objects.extend(_create_damage_markers(collection, dimensions))
-    generated_objects.extend(_create_sockets(collection, dimensions))
+    generated_objects.extend(_create_damage_markers(collection, dimensions, subsystem_layout))
+    generated_objects.extend(_create_sockets(collection, dimensions, hardpoints))
     generated_objects.extend(_create_vfx_markers(collection, dimensions))
     generated_objects.extend(_create_camera_markers(collection, dimensions))
     generated_objects.extend(_create_target_markers(collection, dimensions))
@@ -137,6 +217,8 @@ def generate_ship(config: ShipGenerationConfig) -> dict[str, Any]:
         _show_technical_helpers(generated_objects)
     else:
         _hide_technical_helpers(generated_objects)
+    if config.show_hardpoint_helpers:
+        _show_hardpoint_helpers(generated_objects)
 
     root = _create_empty(collection, f"TARGET_{_safe_id(config.ship_id)}_Root", (0.0, 0.0, 0.0))
     root.empty_display_size = 0.05
@@ -152,15 +234,36 @@ def generate_ship(config: ShipGenerationConfig) -> dict[str, Any]:
         seed=config.seed,
         variant=config.variant,
         objects=generated_objects,
+        ship_frame=ship_frame,
+        frame_definition=frame_definition(ship_frame),
+        hardpoints=hardpoints,
+        component_slots=component_slots,
+        equipment_recommendations=build_equipment_recommendations(
+            ship_frame,
+            hardpoints,
+            component_slots,
+            include_loadout=config.generate_loadout_metadata,
+        ),
+        performance_baseline=performance_baseline(ship_frame),
+        subsystem_layout=subsystem_layout,
     )
     root["void_shipwright_metadata"] = metadata
     root["void_shipwright_role"] = config.role
     root["void_shipwright_faction"] = config.faction
     root["void_shipwright_seed"] = config.seed
     root["void_shipwright_visual_variant"] = variation.key
+    root["void_shipwright_visual_quality"] = config.visual_quality
+    root["void_shipwright_design_language"] = config.design_language
+    root["void_shipwright_resolved_design_language"] = design_language.faction_shape_language
+    root["void_shipwright_silhouette_bias"] = config.silhouette_bias
+    root["void_shipwright_ship_frame"] = ship_frame
     root["void_shipwright_structure_density"] = config.structure_density
     root["void_shipwright_texture_workflow"] = config.texture_workflow
-    root["void_shipwright_texture_resolution"] = config.texture_resolution
+    root["void_shipwright_texture_quality"] = config.texture_quality
+    root["void_shipwright_texture_resolution"] = effective_texture_resolution(config.texture_quality, config.texture_resolution)
+    root["void_shipwright_material_style"] = config.material_style
+    root["void_shipwright_resolved_material_style"] = recommended_style_for(config.faction, config.ship_type, config.material_style)
+    root["void_shipwright_material_complexity"] = config.material_complexity
     if config.presentation_scene:
         _setup_presentation_scene(collection, dimensions)
     return metadata
@@ -201,7 +304,82 @@ def _apply_ship_variation_dimensions(dimensions: dict[str, float], variation: Sh
         "carrier": (1.14, 1.16, 1.16, 0.58, 0.92),
         "compact": (0.86, 1.06, 1.03, 0.88, 1.28),
         "asymmetric": (1.02, 1.12, 0.98, 1.05, 1.04),
+        "arrowhead": (1.08, 1.18, 1.00, 1.18, 1.05),
+        "manta": (0.98, 1.36, 0.82, 1.55, 1.02),
+        "split_nose": (1.08, 1.05, 0.98, 1.08, 1.02),
+        "forked_prow": (1.12, 1.10, 1.00, 0.95, 1.05),
+        "crescent": (1.00, 1.28, 0.92, 1.42, 0.96),
+        "needle": (1.32, 0.72, 0.82, 0.90, 1.22),
+        "dagger": (1.24, 0.84, 0.88, 1.00, 1.18),
+        "hammerhead_refined": (1.00, 1.26, 1.04, 0.78, 1.10),
+        "cathedral_capital": (1.18, 1.20, 1.32, 0.72, 1.08),
+        "carrier_spine": (1.18, 1.18, 1.12, 0.62, 0.98),
+        "luxury_swan": (1.16, 0.86, 1.04, 0.92, 0.98),
+        "military_wedge": (1.08, 1.18, 1.08, 0.76, 1.05),
+        "industrial_frame": (1.04, 1.18, 1.18, 0.62, 0.92),
+        "asym_salvage": (1.04, 1.16, 1.04, 0.80, 0.96),
+        "ring_engine": (1.02, 1.04, 1.06, 0.86, 1.28),
+        "tri_engine": (1.06, 0.98, 1.02, 0.86, 1.34),
+        "wide_nacelle": (1.00, 1.30, 0.96, 0.88, 1.30),
+        "blade_wing": (1.10, 1.02, 0.86, 1.58, 1.12),
+        "deep_keel": (1.08, 0.98, 1.30, 0.70, 0.94),
+        "armored_citadel": (1.12, 1.20, 1.24, 0.70, 1.08),
+        "railgun_spine": (1.18, 0.90, 1.00, 0.72, 1.05),
     }[variation.key]
+    return {
+        **dimensions,
+        "length": dimensions["length"] * length_scale,
+        "width": dimensions["width"] * width_scale,
+        "height": dimensions["height"] * height_scale,
+        "wing": dimensions["wing"] * wing_scale,
+        "engine": dimensions["engine"] * engine_scale,
+    }
+
+
+def _apply_design_language_dimensions(
+    dimensions: dict[str, float],
+    config: ShipGenerationConfig,
+    language: DesignLanguage,
+) -> dict[str, float]:
+    length_scale = 1.0
+    width_scale = 1.0
+    height_scale = 1.0
+    wing_scale = 1.0
+    engine_scale = 1.0
+
+    if config.silhouette_bias == "sleek":
+        length_scale *= 1.15
+        width_scale *= 0.84
+        height_scale *= 0.92
+    elif config.silhouette_bias == "broad":
+        length_scale *= 0.98
+        width_scale *= 1.24
+        wing_scale *= 1.14
+    elif config.silhouette_bias == "tall":
+        height_scale *= 1.22
+        width_scale *= 0.94
+    elif config.silhouette_bias == "asymmetric":
+        width_scale *= 1.10
+        wing_scale *= 1.08
+    elif config.silhouette_bias == "capital":
+        length_scale *= 1.16
+        width_scale *= 1.18
+        height_scale *= 1.14
+        engine_scale *= 1.08
+
+    if language.silhouette_style in {"needle_speedform", "smooth_swan"}:
+        length_scale *= 1.08
+        width_scale *= 0.92
+    elif language.silhouette_style in {"wedge_citadel", "spine_and_modules"}:
+        width_scale *= 1.06
+        height_scale *= 1.04
+    elif language.silhouette_style == "utility_frame":
+        height_scale *= 1.06
+        engine_scale *= 0.96
+    elif language.silhouette_style == "arched_relic":
+        width_scale *= 1.06
+        height_scale *= 1.10
+
     return {
         **dimensions,
         "length": dimensions["length"] * length_scale,
@@ -337,6 +515,7 @@ MATERIAL_STYLE_PROFILES = {
         "rust_affinity": 0.85,
     },
 }
+MATERIAL_STYLE_PROFILES.update(PREMIUM_STYLE_PROFILES)
 
 
 def _part_material_profiles(selected_style: str) -> dict[str, dict[str, Any]]:
@@ -391,17 +570,35 @@ def _create_materials(
     config: ShipGenerationConfig | None = None,
 ) -> _LazyMaterialLibrary:
     profile = FACTION_PROFILES[faction]
-    selected_material_style = config.material_style if config else "gunmetal"
+    selected_material_style = recommended_style_for(faction, config.ship_type, config.material_style) if config else "gunmetal"
     material_profile = MATERIAL_STYLE_PROFILES[selected_material_style]
     part_profiles = _part_material_profiles(selected_material_style)
     texture_scale = max(config.texture_scale if config else 1.0, 0.1)
-    raw_rust_amount = _clamp(config.rust_amount if config else 0.22)
-    scratch_amount = _clamp(config.scratch_amount if config else 0.55)
+    faction_influence = _clamp(config.faction_material_influence if config else 0.75)
+    ship_type = config.ship_type if config else "light_raider"
+    wear_language = material_language_multiplier(faction, ship_type, "wear", faction_influence)
+    dirt_language = material_language_multiplier(faction, ship_type, "dirt", faction_influence)
+    rust_language = material_language_multiplier(faction, ship_type, "rust", faction_influence)
+    decal_language = material_language_multiplier(faction, ship_type, "decal", faction_influence)
+    emissive_language = material_language_multiplier(faction, ship_type, "emissive", faction_influence)
+    raw_rust_amount = _clamp((config.rust_amount if config else 0.22) * rust_language)
+    scratch_amount = _clamp((config.scratch_amount if config else 0.55) * wear_language)
+    edge_wear_amount = _clamp((config.edge_wear_amount if config else 0.34) * wear_language)
+    cavity_dirt_amount = _clamp((config.cavity_dirt_amount if config else 0.42) * dirt_language)
+    roughness_variation = _clamp(config.roughness_variation if config else 0.65)
+    metallic_variation = _clamp(config.metallic_variation if config else 0.45)
+    heat_stain_amount = _clamp(config.heat_stain_amount if config else 0.62)
+    soot_amount = _clamp((config.soot_amount if config else 0.28) * dirt_language)
+    decal_amount = _clamp((config.decal_amount if config else 0.45) * decal_language)
+    livery_amount = _clamp(config.livery_amount if config else 0.50)
+    emissive_density = _clamp((config.emissive_density if config else 0.40) * emissive_language)
+    engine_heat_intensity = _clamp(config.engine_heat_intensity if config else 0.75)
     use_custom_colors = bool(config and config.use_custom_colors)
     faction_hull = _rgba_from_rgb(config.primary_hue if use_custom_colors and config else None, profile["color"])
     accent_color = _rgba_from_rgb(config.accent_hue if use_custom_colors and config else None, profile["accent"])
-    graphite = _mix_color(material_profile["base"], faction_hull, 0.08)
-    armor = _mix_color(material_profile["armor"], faction_hull, 0.16)
+    faction_mix = _clamp(0.08 + faction_influence * 0.18)
+    graphite = _mix_color(material_profile["base"], faction_hull, faction_mix * 0.52)
+    armor = _mix_color(material_profile["armor"], faction_hull, faction_mix)
     worn_edge = _mix_color(material_profile["edge"], faction_hull, 0.08)
     trim_color = _mix_color(material_profile["trim"], faction_hull, 0.04)
     body_skin = _mix_color(graphite, (0.018, 0.020, 0.022, 1.0), 0.28)
@@ -435,10 +632,18 @@ def _create_materials(
         return _clamp(raw_rust_amount * part_profiles[part_name]["rust_affinity"] * multiplier)
 
     texture_workflow = config.texture_workflow if config else "painted"
-    texture_resolution = validate_texture_resolution(config.texture_resolution if config else 64)
+    texture_resolution = validate_texture_resolution(effective_texture_resolution(config.texture_quality, config.texture_resolution) if config else 256)
     paint_seed = _stable_int_seed(config.seed, config.ship_type, config.variant, config.faction) if config else 0
-    wear_amount = _clamp(config.wear_amount if config else 0.65)
-    decal_density = _clamp(config.decal_density if config else 1.0)
+    wear_amount = _clamp((config.wear_amount if config else 0.65) * max(edge_wear_amount, 0.20))
+    decal_density = _clamp((config.decal_density if config else 1.0) * max(decal_amount, 0.05))
+    material_complexity = config.material_complexity if config else "high"
+    paint_layer_strength = _clamp(config.paint_layer_strength if config else 0.82)
+    glass_tint = _clamp(config.glass_tint if config else 0.62)
+    export_texture_maps = bool(config.export_texture_maps) if config else True
+    generate_emissive_map = bool(config.generate_emissive_map) if config else True
+    generate_ao_map = bool(config.generate_ao_map) if config else True
+    generate_decal_mask = bool(config.generate_decal_mask) if config else False
+    generate_material_id_mask = bool(config.generate_material_id_mask) if config else False
 
     def metal(
         part_name: str,
@@ -474,6 +679,27 @@ def _create_materials(
                 roughness=roughness,
                 emission_color=emission_color,
                 emission_strength=emission_strength,
+                material_style=selected_material_style,
+                material_complexity=material_complexity,
+                paint_layer_strength=paint_layer_strength,
+                roughness_variation=roughness_variation,
+                metallic_variation=metallic_variation,
+                edge_wear_amount=edge_wear_amount,
+                cavity_dirt_amount=cavity_dirt_amount,
+                heat_stain_amount=heat_stain_amount,
+                soot_amount=soot_amount,
+                decal_amount=decal_amount,
+                livery_amount=livery_amount,
+                emissive_density=emissive_density,
+                engine_heat_intensity=engine_heat_intensity,
+                faction_material_influence=faction_influence,
+                faction=faction,
+                ship_type=ship_type,
+                generate_emissive_map=generate_emissive_map,
+                generate_ao_map=generate_ao_map,
+                generate_decal_mask=generate_decal_mask,
+                generate_material_id_mask=generate_material_id_mask,
+                export_texture_maps=export_texture_maps,
             )
         return _metal_material(
             name,
@@ -510,10 +736,31 @@ def _create_materials(
             "wear": lambda: metal("wear", "VS_Metal_Chipped_Edge_Wear", worn_edge, part_profiles["wear"], rust_amount=rust_for("wear", 0.30), scratch_amount=1.0, texture_scale=texture_scale * 1.8, role_scale=0.35, metallic=0.72, roughness=0.42),
             "red_decal": lambda: metal("red_decal", "VS_Painted_Raider_Livery", raider_red, part_profiles["decal"], rust_amount=rust_for("decal", 0.45), scratch_amount=scratch_amount * 0.65, texture_scale=texture_scale * 1.2, role_scale=0.55, metallic=0.12, roughness=0.50),
             "ordnance": lambda: metal("ordnance", "VS_Metal_Ordnance_Amber", (0.9, 0.48, 0.10, 1.0), part_profiles["ordnance"], rust_amount=rust_for("ordnance", 0.25), scratch_amount=scratch_amount * 0.45, texture_scale=texture_scale, role_scale=0.45, metallic=0.34, roughness=0.42, emission_color=(0.9, 0.28, 0.04, 1.0), emission_strength=0.22 * glow_strength),
-            "glass": lambda: _material("VS_CanopyGlass", (0.08, 0.32, 0.46, 0.72), alpha=0.72, metallic=0.0, roughness=0.12),
-            "glow": lambda: _material("VS_EngineGlow", glow_color, emission_color=glow_color, emission_strength=3.5 * glow_strength),
-            "window": lambda: _material("VS_WindowLights", window_color, emission_color=window_color, emission_strength=2.2 * glow_strength),
-            "decal": lambda: _material("VS_DesignerDecals", accent_color, emission_color=accent_color, emission_strength=0.35, metallic=0.05, roughness=0.28),
+            "glass": lambda: premium_glass_material(
+                "VS_Premium_CanopyGlass",
+                window_color,
+                tint_strength=glass_tint,
+                emission_color=glow_color,
+                emission_strength=0.22 * glow_strength * emissive_density,
+                reinforced=ship_type in {"gunship", "boarding_frigate", "heavy_cruiser", "boss_capital_ship"},
+                luxury=ship_type == "luxury_yacht",
+                ancient=faction == "ancient_relic",
+            ),
+            "glow": lambda: emissive_pbr_material(
+                "VS_Premium_EngineGlow",
+                glow_color,
+                strength=(3.5 + engine_heat_intensity * 2.0) * glow_strength * max(emissive_density, 0.08),
+                alpha=0.92,
+                pulse_bias=engine_heat_intensity,
+            ),
+            "window": lambda: emissive_pbr_material(
+                "VS_Premium_WindowLights",
+                window_color,
+                strength=2.2 * glow_strength * max(emissive_density, 0.08),
+                alpha=0.82,
+                pulse_bias=0.30,
+            ),
+            "decal": lambda: _material("VS_DesignerDecals", accent_color, emission_color=accent_color, emission_strength=0.35 * glow_strength * emissive_density, metallic=0.05, roughness=0.28),
             "collision": lambda: _material("VS_CollisionProxy", (0.15, 0.85, 0.45, 0.25), alpha=0.25),
             "marker": lambda: _material("VS_Marker", (0.1, 0.55, 1.0, 1.0)),
         }
@@ -827,12 +1074,30 @@ def _dimensions_for(
         height_scale *= 1.08
         wing_span *= 0.72
         engine_scale *= 1.1
+    elif ship_type == "boarding_frigate":
+        length_scale *= 1.42
+        width_scale *= 1.26
+        height_scale *= 1.34
+        wing_span *= 0.52
+        engine_scale *= 0.96
     elif ship_type == "freighter":
         length_scale *= 1.12
         width_scale *= 1.05
         height_scale *= 1.42
         wing_span *= 0.45
         engine_scale *= 0.9
+    elif ship_type == "heavy_cruiser":
+        length_scale *= 1.78
+        width_scale *= 1.58
+        height_scale *= 1.62
+        wing_span *= 0.62
+        engine_scale *= 1.42
+    elif ship_type == "boss_capital_ship":
+        length_scale *= 2.45
+        width_scale *= 2.10
+        height_scale *= 2.25
+        wing_span *= 0.72
+        engine_scale *= 1.85
     elif ship_type == "heavy_fighter":
         length_scale *= 0.98
         width_scale *= 1.12
@@ -972,12 +1237,18 @@ def _create_meshes(
     height = dimensions["height"]
     objects = _create_archetype_base(collection, materials, dimensions, rng, config)
 
+    objects.extend(_create_art_direction_layer(collection, materials, dimensions, rng, config))
     objects.extend(_create_role_features(collection, materials, dimensions, rng, config))
     objects.extend(_create_faction_features(collection, materials, dimensions, rng, config))
     objects.extend(_create_archetype_features(collection, materials, dimensions, rng, config))
     objects.extend(_create_variation_features(collection, materials, dimensions, rng, config))
     objects.extend(_create_structural_corner_layer(collection, materials, dimensions, rng, config))
     objects.extend(_create_designer_detail_layer(collection, materials, dimensions, rng, config))
+
+    quality_report = evaluate_visual_quality(objects, dimensions, config)
+    if config.avoid_boxy_shapes and not quality_report["passes"]:
+        objects.extend(_create_visual_quality_rescue_geometry(collection, materials, dimensions, config, quality_report))
+        quality_report = evaluate_visual_quality(objects, dimensions, config)
 
     if config.role == "boss" or config.faction in {"sector_navy", "corporate_security"}:
         objects.append(
@@ -1020,6 +1291,7 @@ def _create_meshes(
     for obj in objects:
         obj["void_shipwright_kind"] = "visual_mesh"
         obj["void_shipwright_seed_offset"] = rng.randint(1, 999999)
+        obj["void_shipwright_visual_quality_score"] = round(float(quality_report["score"]), 4)
     return objects
 
 
@@ -1036,8 +1308,14 @@ def _create_archetype_base(
         return _create_interceptor_base(collection, materials, dimensions, rng)
     if config.ship_type == "gunship":
         return _create_gunship_base(collection, materials, dimensions)
+    if config.ship_type == "boarding_frigate":
+        return _create_boarding_frigate_base(collection, materials, dimensions)
     if config.ship_type == "freighter":
         return _create_freighter_base(collection, materials, dimensions, config)
+    if config.ship_type == "heavy_cruiser":
+        return _create_heavy_cruiser_base(collection, materials, dimensions)
+    if config.ship_type == "boss_capital_ship":
+        return _create_boss_capital_base(collection, materials, dimensions)
     if config.ship_type == "heavy_fighter":
         return _create_heavy_fighter_base(collection, materials, dimensions, rng)
     if config.ship_type == "bomber":
@@ -1175,6 +1453,93 @@ def _create_gunship_base(
     for side in (-1, 1):
         objects.append(_hard_airfoil_plate(collection, f"MESH_Gunship_Stub_Wing_{'Left' if side < 0 else 'Right'}", [(side * width * 0.24, -length * 0.20), (side * width * 0.55, -length * 0.10), (side * width * 0.60, length * 0.16), (side * width * 0.24, length * 0.22)], -height * 0.09, height * 0.045, materials["wing"]))
         objects.append(_weapon_barrel(collection, f"MESH_Gunship_Heavy_Nose_Cannon_{'Left' if side < 0 else 'Right'}", (side * width * 0.11, -length * 0.54, -height * 0.08), width * 0.020, length * 0.24, materials["weapon"]))
+    return objects
+
+
+def _create_boarding_frigate_base(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+) -> list[bpy.types.Object]:
+    length = dimensions["length"]
+    width = dimensions["width"]
+    height = dimensions["height"]
+    engine = dimensions["engine"]
+    objects = [
+        _gunship_hull(collection, "MESH_Hull_Core", length, width * 0.92, height * 1.08, materials["body"]),
+        _tapered_prism(collection, "MESH_Boarding_Reinforced_Nose", (0.0, -length * 0.50, -height * 0.02), length * 0.12, width * 0.090, width * 0.220, height * 0.080, height * 0.160, materials["body_panel"], bevel=0.012),
+        _box(collection, "MESH_Boarding_Bridge_Glass", (0.0, -length * 0.22, height * 0.54), (width * 0.12, length * 0.055, height * 0.045), materials["glass"], bevel=0.008),
+        _box(collection, "MESH_Boarding_Docking_Collar_Left", (-width * 0.48, -length * 0.02, height * 0.02), (width * 0.055, length * 0.18, height * 0.11), materials["system_bay"], bevel=0.010),
+        _box(collection, "MESH_Boarding_Docking_Collar_Right", (width * 0.48, -length * 0.02, height * 0.02), (width * 0.055, length * 0.18, height * 0.11), materials["system_bay"], bevel=0.010),
+        _smooth_engine_pod(collection, "MESH_Boarding_Engine_Left", (-width * 0.24, length * 0.46, -height * 0.05), length * 0.25, width * 0.09 * engine, height * 0.16 * engine, materials["engine_shell"]),
+        _smooth_engine_pod(collection, "MESH_Boarding_Engine_Right", (width * 0.24, length * 0.46, -height * 0.05), length * 0.25, width * 0.09 * engine, height * 0.16 * engine, materials["engine_shell"]),
+    ]
+    for side in (-1, 1):
+        objects.append(_weapon_barrel(collection, f"MESH_Boarding_Grapple_Rail_{_side_name(side)}", (side * width * 0.08, -length * 0.62, -height * 0.06), width * 0.014, length * 0.20, materials["weapon"]))
+        objects.append(_engine_glow(collection, f"MESH_Boarding_Engine_Glow_{_side_name(side)}", (side * width * 0.24, length * 0.61, -height * 0.05), width * 0.062 * engine, length * 0.020, materials["glow"]))
+    return objects
+
+
+def _create_heavy_cruiser_base(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+) -> list[bpy.types.Object]:
+    length = dimensions["length"]
+    width = dimensions["width"]
+    height = dimensions["height"]
+    engine = dimensions["engine"]
+    objects = [
+        _corvette_hull(collection, "MESH_Hull_Core", length, width, height, materials["body"]),
+        _box(collection, "MESH_Cruiser_Command_Tower", (0.0, -length * 0.05, height * 0.70), (width * 0.16, length * 0.16, height * 0.11), materials["system_bay"], bevel=0.012),
+        _box(collection, "MESH_Cruiser_Bridge_Glass", (0.0, -length * 0.20, height * 0.82), (width * 0.115, length * 0.044, height * 0.040), materials["glass"], bevel=0.007),
+        _plate_prism(collection, "MESH_Cruiser_Dorsal_Weapons_Deck", [(-width * 0.34, -length * 0.30), (width * 0.34, -length * 0.30), (width * 0.42, length * 0.32), (width * 0.24, length * 0.48), (-width * 0.24, length * 0.48), (-width * 0.42, length * 0.32)], height * 0.54, height * 0.070, materials["body_panel"], bevel=0.014),
+        _box(collection, "MESH_Cruiser_Aft_Reactor_Block", (0.0, length * 0.46, -height * 0.02), (width * 0.32, length * 0.13, height * 0.24 * engine), materials["engine_shell"], bevel=0.014),
+    ]
+    for side in (-1, 1):
+        objects.append(_box(collection, f"MESH_Cruiser_Side_Battery_{_side_name(side)}", (side * width * 0.46, -length * 0.06, height * 0.02), (width * 0.075, length * 0.28, height * 0.115), materials["weapon"], bevel=0.010))
+        objects.append(_smooth_engine_pod(collection, f"MESH_Cruiser_Outboard_Engine_{_side_name(side)}", (side * width * 0.30, length * 0.48, -height * 0.06), length * 0.24, width * 0.075 * engine, height * 0.130 * engine, materials["engine_shell"]))
+        objects.append(_engine_glow(collection, f"MESH_Cruiser_Engine_Glow_{_side_name(side)}", (side * width * 0.30, length * 0.63, -height * 0.06), width * 0.058 * engine, length * 0.022, materials["glow"]))
+    return objects
+
+
+def _create_boss_capital_base(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+) -> list[bpy.types.Object]:
+    length = dimensions["length"]
+    width = dimensions["width"]
+    height = dimensions["height"]
+    objects = [
+        _faceted_loft_y(
+            collection,
+            "MESH_Capital_Primary_Multi_Section_Spine",
+            [
+                (-length * 0.64, width * 0.055, height * 0.070, -height * 0.03, 0.0),
+                (-length * 0.50, width * 0.20, height * 0.18, -height * 0.01, 0.0),
+                (-length * 0.30, width * 0.42, height * 0.32, height * 0.02, 0.0),
+                (-length * 0.06, width * 0.58, height * 0.42, height * 0.02, 0.0),
+                (length * 0.22, width * 0.52, height * 0.38, -height * 0.01, 0.0),
+                (length * 0.46, width * 0.36, height * 0.30, -height * 0.04, 0.0),
+                (length * 0.64, width * 0.18, height * 0.20, -height * 0.05, 0.0),
+            ],
+            materials["body"],
+            bevel=0.024,
+            top_bias=0.88,
+            bottom_bias=0.54,
+        ),
+        _tapered_prism(collection, "MESH_Capital_Armored_Blade_Prow", (0.0, -length * 0.56, height * 0.03), length * 0.12, width * 0.055, width * 0.22, height * 0.065, height * 0.150, materials["armor_top"], bevel=0.014),
+        _plate_prism(collection, "MESH_Capital_Dorsal_Flight_Deck_Shell", [(-width * 0.34, -length * 0.34), (width * 0.34, -length * 0.34), (width * 0.48, length * 0.24), (width * 0.25, length * 0.54), (-width * 0.25, length * 0.54), (-width * 0.48, length * 0.24)], height * 0.55, height * 0.075, materials["body_panel"], bevel=0.016),
+        _tapered_prism(collection, "MESH_Capital_Command_Citadel_Core", (0.0, -length * 0.04, height * 0.76), length * 0.18, width * 0.105, width * 0.18, height * 0.080, height * 0.155, materials["system_bay"], bevel=0.014),
+        _box(collection, "MESH_Capital_Command_Citadel_Glass_Band", (0.0, -length * 0.225, height * 0.83), (width * 0.115, length * 0.018, height * 0.040), materials["glass"], bevel=0.006),
+        _box(collection, "MESH_Capital_Admiral_Viewport_Glass", (0.0, -length * 0.162, height * 0.93), (width * 0.075, length * 0.014, height * 0.032), materials["glass"], bevel=0.005),
+        _tapered_prism(collection, "MESH_Capital_Aft_Reactor_Bastion", (0.0, length * 0.42, -height * 0.02), length * 0.16, width * 0.20, width * 0.34, height * 0.17, height * 0.30, materials["engine_shell"], bevel=0.016),
+    ]
+    for side in (-1, 1):
+        objects.append(_tapered_prism(collection, f"MESH_Capital_Outboard_Hull_Section_{_side_name(side)}", (side * width * 0.38, length * 0.06, height * 0.02), length * 0.50, width * 0.075, width * 0.16, height * 0.15, height * 0.22, materials["body_panel"], bevel=0.016))
+        objects.append(_tapered_prism(collection, f"MESH_Capital_Outer_Weapons_Gallery_{_side_name(side)}", (side * width * 0.54, length * 0.08, height * 0.10), length * 0.40, width * 0.040, width * 0.085, height * 0.080, height * 0.135, materials["weapon"], bevel=0.012))
+        objects.extend(create_engine_nacelle(collection, f"MESH_Capital_Heavy_Engine_Nacelle_{_side_name(side)}", (side * width * 0.20, length * 0.58, -height * 0.12), length * 0.28, width * 0.075, height * 0.145, materials, complexity=1.0))
     return objects
 
 
@@ -1684,17 +2049,21 @@ def _faceted_loft_y(
         vertices.extend(
             [
                 (offset_x, y, offset_z + half_height * top_bias),
-                (offset_x + half_width * 0.62, y, offset_z + half_height * 0.42),
-                (offset_x + half_width, y, offset_z),
+                (offset_x + half_width * 0.36, y, offset_z + half_height * (top_bias * 0.82)),
+                (offset_x + half_width * 0.72, y, offset_z + half_height * 0.44),
+                (offset_x + half_width, y, offset_z + half_height * 0.06),
+                (offset_x + half_width * 0.90, y, offset_z - half_height * 0.30),
                 (offset_x + half_width * 0.50, y, offset_z - half_height * bottom_bias),
                 (offset_x, y, offset_z - half_height * (bottom_bias + 0.18)),
                 (offset_x - half_width * 0.50, y, offset_z - half_height * bottom_bias),
-                (offset_x - half_width, y, offset_z),
-                (offset_x - half_width * 0.62, y, offset_z + half_height * 0.42),
+                (offset_x - half_width * 0.90, y, offset_z - half_height * 0.30),
+                (offset_x - half_width, y, offset_z + half_height * 0.06),
+                (offset_x - half_width * 0.72, y, offset_z + half_height * 0.44),
+                (offset_x - half_width * 0.36, y, offset_z + half_height * (top_bias * 0.82)),
             ]
         )
 
-    segments = 8
+    segments = HARD_SURFACE_RING_SEGMENTS
     faces: list[tuple[int, ...]] = []
     for ring in range(len(rings) - 1):
         base = ring * segments
@@ -1704,7 +2073,7 @@ def _faceted_loft_y(
     faces.append(tuple(reversed(range(segments))))
     last_base = (len(rings) - 1) * segments
     faces.append(tuple(last_base + index for index in range(segments)))
-    return _mesh_object(collection, name, vertices, faces, material, bevel=bevel)
+    return _mesh_object(collection, name, vertices, faces, material, bevel=bevel, smooth=True)
 
 
 def _hard_airfoil_plate(
@@ -1776,7 +2145,7 @@ def _smooth_hull(
         (length * 0.48, width * 0.20, height * 0.25, -height * 0.015, 0.0),
         (length * 0.58, width * 0.08, height * 0.12, -height * 0.02, 0.0),
     ]
-    return _lofted_ellipse_y(collection, name, rings, material, radial_segments=28, top_scale=1.1, bottom_scale=0.78)
+    return _lofted_ellipse_y(collection, name, rings, material, radial_segments=36, top_scale=1.1, bottom_scale=0.78)
 
 
 def _smooth_spine(
@@ -1793,7 +2162,7 @@ def _smooth_spine(
         (length * 0.12, width * 0.12, height * 0.11, height * 0.48, 0.0),
         (length * 0.38, width * 0.07, height * 0.07, height * 0.40, 0.0),
     ]
-    return _lofted_ellipse_y(collection, name, rings, material, radial_segments=18, top_scale=0.85, bottom_scale=0.45)
+    return _lofted_ellipse_y(collection, name, rings, material, radial_segments=28, top_scale=0.85, bottom_scale=0.45)
 
 
 def _smooth_canopy(
@@ -1810,7 +2179,7 @@ def _smooth_canopy(
         (-length * 0.17, width * 0.105, height * 0.075, height * 0.63, 0.0),
         (-length * 0.07, width * 0.07, height * 0.055, height * 0.57, 0.0),
     ]
-    return _lofted_ellipse_y(collection, name, rings, material, radial_segments=20, top_scale=1.0, bottom_scale=0.28)
+    return _lofted_ellipse_y(collection, name, rings, material, radial_segments=32, top_scale=1.0, bottom_scale=0.28)
 
 
 def _smooth_engine_pod(
@@ -1828,7 +2197,7 @@ def _smooth_engine_pod(
         (length * 0.22, radius_x, radius_z, 0.0, 0.0),
         (length * 0.50, radius_x * 0.74, radius_z * 0.78, 0.0, 0.0),
     ]
-    return _lofted_ellipse_y(collection, name, rings, material, radial_segments=24, location=location)
+    return _lofted_ellipse_y(collection, name, rings, material, radial_segments=36, location=location)
 
 
 def _smooth_wing(
@@ -2014,7 +2383,7 @@ def _box(
     obj.data.materials.append(material)
     collection.objects.link(obj)
     obj["void_shipwright_surface_style"] = "cut_corner_hard_box"
-    _add_surface_modifiers(obj, bevel=max(bevel, 0.0025), weighted_normals=True)
+    _add_surface_modifiers(obj, bevel=_visual_bevel_width(obj, bevel), weighted_normals=True)
     return obj
 
 
@@ -2033,22 +2402,27 @@ def _tapered_prism(
 ) -> bpy.types.Object:
     def ring(y: float, half_width: float, half_height: float) -> list[tuple[float, float, float]]:
         return [
-            (-half_width * 0.62, y, -half_height),
-            (half_width * 0.62, y, -half_height),
-            (half_width, y, -half_height * 0.48),
-            (half_width, y, half_height * 0.48),
-            (half_width * 0.56, y, half_height),
-            (-half_width * 0.56, y, half_height),
-            (-half_width, y, half_height * 0.48),
-            (-half_width, y, -half_height * 0.48),
+            (-half_width * 0.46, y, -half_height),
+            (half_width * 0.46, y, -half_height),
+            (half_width * 0.82, y, -half_height * 0.72),
+            (half_width, y, -half_height * 0.30),
+            (half_width, y, half_height * 0.36),
+            (half_width * 0.70, y, half_height * 0.82),
+            (half_width * 0.34, y, half_height),
+            (-half_width * 0.34, y, half_height),
+            (-half_width * 0.70, y, half_height * 0.82),
+            (-half_width, y, half_height * 0.36),
+            (-half_width, y, -half_height * 0.30),
+            (-half_width * 0.82, y, -half_height * 0.72),
         ]
 
     vertices = ring(-half_length, front_half_width, front_half_height) + ring(half_length, rear_half_width, rear_half_height)
-    faces: list[tuple[int, ...]] = [tuple(reversed(range(8))), tuple(range(8, 16))]
-    for index in range(8):
-        faces.append((index, (index + 1) % 8, ((index + 1) % 8) + 8, index + 8))
+    segments = HARD_SURFACE_RING_SEGMENTS
+    faces: list[tuple[int, ...]] = [tuple(reversed(range(segments))), tuple(range(segments, segments * 2))]
+    for index in range(segments):
+        faces.append((index, (index + 1) % segments, ((index + 1) % segments) + segments, index + segments))
     obj = _mesh_object(collection, name, vertices, faces, material, location=location, bevel=max(bevel, 0.0025))
-    obj["void_shipwright_surface_style"] = "octagonal_tapered_prism"
+    obj["void_shipwright_surface_style"] = "beveled_dodecagonal_tapered_prism"
     return obj
 
 
@@ -2188,7 +2562,7 @@ def _faceted_barrel_y(
         (depth * 0.46, radius * 1.22, radius * 0.96),
         (depth * 0.50, radius * 0.78, radius * 0.62),
     ]
-    radial_segments = 12
+    radial_segments = ENGINE_DETAIL_SEGMENTS
     vertices: list[tuple[float, float, float]] = []
     for y, radius_x, radius_z in rings:
         for index in range(radial_segments):
@@ -2204,7 +2578,9 @@ def _faceted_barrel_y(
     faces.append(tuple(reversed(range(radial_segments))))
     last_base = (len(rings) - 1) * radial_segments
     faces.append(tuple(last_base + index for index in range(radial_segments)))
-    return _mesh_object(collection, name, vertices, faces, material, location=location, bevel=max(radius * 0.08, 0.0015))
+    obj = _mesh_object(collection, name, vertices, faces, material, location=location, bevel=max(radius * 0.12, 0.0025), smooth=True)
+    obj["void_shipwright_surface_style"] = "beveled_engine_barrel"
+    return obj
 
 
 def _lance_assembly(
@@ -2319,21 +2695,13 @@ def _hard_pod_y(
         (half_length * 0.48, radius_x * 0.96, radius_z),
         (half_length, radius_x * 0.54, radius_z * 0.58),
     ]
-    segments = 8
+    segments = 16
     vertices: list[tuple[float, float, float]] = []
     for y, half_width, half_height in rings:
-        vertices.extend(
-            [
-                (0.0, y, half_height),
-                (half_width * 0.62, y, half_height * 0.42),
-                (half_width, y, 0.0),
-                (half_width * 0.48, y, -half_height * 0.70),
-                (0.0, y, -half_height),
-                (-half_width * 0.48, y, -half_height * 0.70),
-                (-half_width, y, 0.0),
-                (-half_width * 0.62, y, half_height * 0.42),
-            ]
-        )
+        for index in range(segments):
+            angle = 2.0 * pi * index / segments
+            squash = 0.94 + 0.06 * abs(cos(angle))
+            vertices.append((cos(angle) * half_width * squash, y, sin(angle) * half_height))
     faces: list[tuple[int, ...]] = []
     for ring in range(len(rings) - 1):
         base = ring * segments
@@ -2343,9 +2711,876 @@ def _hard_pod_y(
     faces.append(tuple(reversed(range(segments))))
     last_base = (len(rings) - 1) * segments
     faces.append(tuple(last_base + index for index in range(segments)))
-    obj = _mesh_object(collection, name, vertices, faces, material, location=location, bevel=max(min(radius_x, radius_z) * 0.08, 0.0025))
-    obj["void_shipwright_surface_style"] = "faceted_hard_pod"
+    obj = _mesh_object(collection, name, vertices, faces, material, location=location, bevel=max(min(radius_x, radius_z) * 0.12, 0.003), smooth=True)
+    obj["void_shipwright_surface_style"] = "beveled_hard_pod"
     return obj
+
+
+def _density(config: ShipGenerationConfig, value: float, quality_key: str) -> float:
+    return _clamp(value * quality_multiplier(config.visual_quality, quality_key))
+
+
+def create_beveled_box(
+    collection: bpy.types.Collection,
+    name: str,
+    location: tuple[float, float, float],
+    scale: tuple[float, float, float],
+    material: bpy.types.Material,
+    *,
+    bevel: float = 0.0,
+) -> bpy.types.Object:
+    return _box(collection, name, location, scale, material, bevel=bevel)
+
+
+def create_tapered_prism(
+    collection: bpy.types.Collection,
+    name: str,
+    location: tuple[float, float, float],
+    half_length: float,
+    front_half_width: float,
+    rear_half_width: float,
+    front_half_height: float,
+    rear_half_height: float,
+    material: bpy.types.Material,
+    *,
+    bevel: float = 0.0,
+) -> bpy.types.Object:
+    return _tapered_prism(collection, name, location, half_length, front_half_width, rear_half_width, front_half_height, rear_half_height, material, bevel=bevel)
+
+
+def create_chamfered_plate(
+    collection: bpy.types.Collection,
+    name: str,
+    points_xy: list[tuple[float, float]],
+    z_center: float,
+    half_thickness: float,
+    material: bpy.types.Material,
+    *,
+    bevel: float = 0.0,
+) -> bpy.types.Object:
+    return _plate_prism(collection, name, points_xy, z_center, half_thickness, material, bevel=bevel)
+
+
+def create_recessed_panel(
+    collection: bpy.types.Collection,
+    name: str,
+    center: tuple[float, float, float],
+    size: tuple[float, float, float],
+    materials: dict[str, bpy.types.Material],
+    *,
+    orientation: str = "top",
+) -> list[bpy.types.Object]:
+    x, y, z = center
+    sx, sy, sz = size
+    if orientation == "side_left" or orientation == "side_right":
+        side = -1 if orientation == "side_left" else 1
+        return [
+            _box(collection, f"{name}_Inset", (x, y, z), (sx * 0.030, sy * 0.74, sz * 0.56), materials["panel"], bevel=max(sz * 0.010, 0.001)),
+            _box(collection, f"{name}_Top_Frame", (x + side * sx * 0.010, y, z + sz * 0.36), (sx * 0.040, sy * 0.82, sz * 0.035), materials["underbody"], bevel=max(sz * 0.010, 0.001)),
+            _box(collection, f"{name}_Bottom_Frame", (x + side * sx * 0.010, y, z - sz * 0.36), (sx * 0.040, sy * 0.82, sz * 0.035), materials["underbody"], bevel=max(sz * 0.010, 0.001)),
+            _box(collection, f"{name}_Fore_Frame", (x + side * sx * 0.010, y - sy * 0.43, z), (sx * 0.040, sy * 0.035, sz * 0.62), materials["body_panel"], bevel=max(sz * 0.010, 0.001)),
+            _box(collection, f"{name}_Aft_Frame", (x + side * sx * 0.010, y + sy * 0.43, z), (sx * 0.040, sy * 0.035, sz * 0.62), materials["body_panel"], bevel=max(sz * 0.010, 0.001)),
+        ]
+    return [
+        _box(collection, f"{name}_Inset", (x, y, z), (sx * 0.72, sy * 0.72, sz * 0.018), materials["panel"], bevel=max(sz * 0.008, 0.001)),
+        _box(collection, f"{name}_Left_Frame", (x - sx * 0.42, y, z + sz * 0.018), (sx * 0.030, sy * 0.82, sz * 0.026), materials["underbody"], bevel=max(sz * 0.009, 0.001)),
+        _box(collection, f"{name}_Right_Frame", (x + sx * 0.42, y, z + sz * 0.018), (sx * 0.030, sy * 0.82, sz * 0.026), materials["underbody"], bevel=max(sz * 0.009, 0.001)),
+        _box(collection, f"{name}_Fore_Frame", (x, y - sy * 0.42, z + sz * 0.018), (sx * 0.82, sy * 0.030, sz * 0.026), materials["body_panel"], bevel=max(sz * 0.009, 0.001)),
+        _box(collection, f"{name}_Aft_Frame", (x, y + sy * 0.42, z + sz * 0.018), (sx * 0.82, sy * 0.030, sz * 0.026), materials["body_panel"], bevel=max(sz * 0.009, 0.001)),
+    ]
+
+
+def create_vent_array(
+    collection: bpy.types.Collection,
+    name: str,
+    center: tuple[float, float, float],
+    count: int,
+    spacing: float,
+    size: tuple[float, float, float],
+    material: bpy.types.Material,
+    *,
+    axis: str = "x",
+) -> list[bpy.types.Object]:
+    x, y, z = center
+    sx, sy, sz = size
+    objects: list[bpy.types.Object] = []
+    for index in range(max(1, count)):
+        offset = (index - (count - 1) * 0.5) * spacing
+        location = (x + offset, y, z) if axis == "x" else (x, y + offset, z)
+        objects.append(_box(collection, f"{name}_{index + 1:02d}", location, (sx, sy, sz), material, bevel=max(min(sx, sy, sz) * 0.12, 0.001)))
+    return objects
+
+
+def create_radiator_fin_array(
+    collection: bpy.types.Collection,
+    name: str,
+    center: tuple[float, float, float],
+    side: int,
+    count: int,
+    length: float,
+    width: float,
+    height: float,
+    material: bpy.types.Material,
+) -> list[bpy.types.Object]:
+    x, y, z = center
+    objects: list[bpy.types.Object] = []
+    for index in range(max(1, count)):
+        y_offset = (index - (count - 1) * 0.5) * length * 0.34
+        objects.append(
+            _hard_airfoil_plate(
+                collection,
+                f"{name}_{index + 1:02d}",
+                [
+                    (x, y + y_offset - length * 0.10),
+                    (x + side * width, y + y_offset - length * 0.04),
+                    (x + side * width * 1.05, y + y_offset + length * 0.10),
+                    (x, y + y_offset + length * 0.12),
+                ],
+                z,
+                height,
+                material,
+            )
+        )
+    return objects
+
+
+def create_engine_heat_ring(
+    collection: bpy.types.Collection,
+    name: str,
+    location: tuple[float, float, float],
+    radius: float,
+    material: bpy.types.Material,
+) -> bpy.types.Object:
+    return _torus_y(collection, name, location, radius, max(radius * 0.065, 0.003), material)
+
+
+def create_engine_nacelle(
+    collection: bpy.types.Collection,
+    name: str,
+    location: tuple[float, float, float],
+    length: float,
+    radius_x: float,
+    radius_z: float,
+    materials: dict[str, bpy.types.Material],
+    *,
+    complexity: float,
+) -> list[bpy.types.Object]:
+    x, y, z = location
+    objects = [
+        _smooth_engine_pod(collection, f"{name}_Housing", location, length, radius_x, radius_z, materials["engine_shell"]),
+        _engine_glow(collection, f"{name}_Core_Glow", (x, y + length * 0.58, z), radius_x * 0.64, length * 0.070, materials["glow"]),
+        create_engine_heat_ring(collection, f"{name}_Aft_Heat_Ring", (x, y + length * 0.52, z), radius_x * 0.88, materials["wear"]),
+    ]
+    if complexity > 0.45:
+        objects.extend(
+            [
+                _tapered_prism(collection, f"{name}_Upper_Fairing", (x, y - length * 0.06, z + radius_z * 0.72), length * 0.32, radius_x * 0.42, radius_x * 0.62, radius_z * 0.10, radius_z * 0.18, materials["body_panel"], bevel=max(radius_z * 0.035, 0.002)),
+                _tapered_prism(collection, f"{name}_Lower_Fairing", (x, y - length * 0.03, z - radius_z * 0.70), length * 0.28, radius_x * 0.34, radius_x * 0.52, radius_z * 0.08, radius_z * 0.14, materials["underbody"], bevel=max(radius_z * 0.030, 0.002)),
+            ]
+        )
+    if complexity > 0.70:
+        objects.extend(
+            create_radiator_fin_array(
+                collection,
+                f"{name}_Cooling_Fin_Left",
+                (x - radius_x * 0.76, y + length * 0.04, z),
+                -1,
+                3,
+                length * 0.12,
+                radius_x * 0.44,
+                radius_z * 0.095,
+                materials["engine_shell"],
+            )
+        )
+        objects.extend(
+            create_radiator_fin_array(
+                collection,
+                f"{name}_Cooling_Fin_Right",
+                (x + radius_x * 0.76, y + length * 0.04, z),
+                1,
+                3,
+                length * 0.12,
+                radius_x * 0.44,
+                radius_z * 0.095,
+                materials["engine_shell"],
+            )
+        )
+    return objects
+
+
+def create_engine_nozzle_cluster(
+    collection: bpy.types.Collection,
+    name: str,
+    center: tuple[float, float, float],
+    columns: int,
+    rows: int,
+    radius: float,
+    spacing_x: float,
+    spacing_z: float,
+    depth: float,
+    materials: dict[str, bpy.types.Material],
+) -> list[bpy.types.Object]:
+    x, y, z = center
+    objects: list[bpy.types.Object] = []
+    for row in range(max(1, rows)):
+        for column in range(max(1, columns)):
+            offset_x = (column - (columns - 1) * 0.5) * spacing_x
+            offset_z = (row - (rows - 1) * 0.5) * spacing_z
+            nozzle_name = f"{name}_{row + 1:02d}_{column + 1:02d}"
+            objects.append(_engine_nozzle(collection, nozzle_name, (x + offset_x, y, z + offset_z), radius, depth, materials["engine_shell"]))
+            objects.append(_engine_glow(collection, f"{nozzle_name}_Glow", (x + offset_x, y + depth * 0.55, z + offset_z), radius * 0.72, depth * 0.20, materials["glow"]))
+            objects.append(create_engine_heat_ring(collection, f"{nozzle_name}_Heat_Ring", (x + offset_x, y + depth * 0.44, z + offset_z), radius * 1.05, materials["wear"]))
+    return objects
+
+
+def create_turret_base(
+    collection: bpy.types.Collection,
+    name: str,
+    location: tuple[float, float, float],
+    radius: float,
+    height: float,
+    materials: dict[str, bpy.types.Material],
+) -> list[bpy.types.Object]:
+    x, y, z = location
+    return [
+        _tapered_prism(collection, f"{name}_Foundation", (x, y, z), radius * 1.05, radius * 0.86, radius * 1.08, height * 0.42, height * 0.55, materials["underbody"], bevel=max(radius * 0.045, 0.002)),
+        _rounded_pod(collection, f"{name}_Armored_Ring", (x, y, z + height * 0.44), radius * 0.62, radius * 0.74, height * 0.36, materials["weapon"]),
+        _box(collection, f"{name}_Service_Hatch", (x, y - radius * 0.82, z + height * 0.54), (radius * 0.54, radius * 0.075, height * 0.095), materials["panel"], bevel=max(radius * 0.025, 0.0015)),
+    ]
+
+
+def create_side_bay(
+    collection: bpy.types.Collection,
+    name: str,
+    center: tuple[float, float, float],
+    side: int,
+    size: tuple[float, float, float],
+    materials: dict[str, bpy.types.Material],
+) -> list[bpy.types.Object]:
+    x, y, z = center
+    sx, sy, sz = size
+    outer_x = x + side * sx * 0.035
+    return [
+        _box(collection, f"{name}_Dark_Recess", (outer_x, y, z), (sx * 0.040, sy * 0.80, sz * 0.58), materials["panel"], bevel=max(sz * 0.012, 0.001)),
+        _box(collection, f"{name}_Upper_Lintel", (outer_x, y, z + sz * 0.44), (sx * 0.052, sy * 0.92, sz * 0.055), materials["body_panel"], bevel=max(sz * 0.015, 0.0015)),
+        _box(collection, f"{name}_Lower_Lintel", (outer_x, y, z - sz * 0.44), (sx * 0.052, sy * 0.88, sz * 0.050), materials["underbody"], bevel=max(sz * 0.015, 0.0015)),
+        _box(collection, f"{name}_Fore_Jamb", (outer_x, y - sy * 0.48, z), (sx * 0.052, sy * 0.040, sz * 0.66), materials["body_panel"], bevel=max(sz * 0.015, 0.0015)),
+        _box(collection, f"{name}_Aft_Jamb", (outer_x, y + sy * 0.48, z), (sx * 0.052, sy * 0.040, sz * 0.66), materials["body_panel"], bevel=max(sz * 0.015, 0.0015)),
+    ]
+
+
+def create_hangar_bay(
+    collection: bpy.types.Collection,
+    name: str,
+    center: tuple[float, float, float],
+    side: int,
+    size: tuple[float, float, float],
+    materials: dict[str, bpy.types.Material],
+) -> list[bpy.types.Object]:
+    objects = create_side_bay(collection, name, center, side, size, materials)
+    x, y, z = center
+    sx, sy, sz = size
+    for index, y_offset in enumerate((-0.26, 0.0, 0.26), start=1):
+        objects.append(_box(collection, f"{name}_Deck_Light_{index:02d}", (x + side * sx * 0.070, y + sy * y_offset, z + sz * 0.34), (sx * 0.012, sy * 0.060, sz * 0.030), materials["glow"], bevel=max(sz * 0.008, 0.001)))
+    return objects
+
+
+def create_armor_terrace(
+    collection: bpy.types.Collection,
+    name: str,
+    center: tuple[float, float, float],
+    size: tuple[float, float, float],
+    materials: dict[str, bpy.types.Material],
+    *,
+    levels: int,
+) -> list[bpy.types.Object]:
+    x, y, z = center
+    sx, sy, sz = size
+    objects: list[bpy.types.Object] = []
+    for level in range(max(1, levels)):
+        shrink = 1.0 - level * 0.16
+        objects.append(
+            _tapered_prism(
+                collection,
+                f"{name}_Level_{level + 1:02d}",
+                (x, y + sy * 0.045 * level, z + sz * 0.17 * level),
+                sy * (0.50 - level * 0.035),
+                sx * (0.48 * shrink),
+                sx * (0.62 * shrink),
+                sz * 0.080,
+                sz * 0.120,
+                materials["armor_top"] if level % 2 == 0 else materials["body_panel"],
+                bevel=max(sz * 0.018, 0.002),
+            )
+        )
+    return objects
+
+
+def create_bridge_window_strip(
+    collection: bpy.types.Collection,
+    name: str,
+    center: tuple[float, float, float],
+    width: float,
+    count: int,
+    materials: dict[str, bpy.types.Material],
+) -> list[bpy.types.Object]:
+    x, y, z = center
+    objects: list[bpy.types.Object] = []
+    for index in range(max(1, count)):
+        offset = (index - (count - 1) * 0.5) * width * 0.16
+        objects.append(_box(collection, f"{name}_Pane_{index + 1:02d}", (x + offset, y, z), (width * 0.045, width * 0.012, width * 0.030), materials["window"], bevel=max(width * 0.005, 0.001)))
+    return objects
+
+
+def _create_art_direction_layer(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+    rng: random.Random,
+    config: ShipGenerationConfig,
+) -> list[bpy.types.Object]:
+    language = resolve_design_language(config.ship_type, config.faction, config.design_language)
+    objects: list[bpy.types.Object] = []
+    if config.ship_type == "light_raider":
+        objects.extend(_create_light_raider_art_geometry(collection, materials, dimensions, rng, config, language))
+    elif config.ship_type == "interceptor":
+        objects.extend(_create_interceptor_art_geometry(collection, materials, dimensions, config, language))
+    elif config.ship_type == "gunship":
+        objects.extend(_create_gunship_art_geometry(collection, materials, dimensions, config, language))
+    elif config.ship_type == "boarding_frigate":
+        objects.extend(_create_boarding_frigate_art_geometry(collection, materials, dimensions, config, language))
+    elif config.ship_type == "missile_corvette":
+        objects.extend(_create_missile_corvette_art_geometry(collection, materials, dimensions, config, language))
+    elif config.ship_type == "freighter":
+        objects.extend(_create_freighter_art_geometry(collection, materials, dimensions, config, language))
+    elif config.ship_type == "heavy_cruiser":
+        objects.extend(_create_heavy_cruiser_art_geometry(collection, materials, dimensions, config, language))
+    elif config.ship_type == "mining_ship":
+        objects.extend(_create_mining_ship_art_geometry(collection, materials, dimensions, config, language))
+    elif config.ship_type == "salvage_ship":
+        objects.extend(_create_salvage_ship_art_geometry(collection, materials, dimensions, config, language))
+    elif config.ship_type == "medical_ship":
+        objects.extend(_create_medical_ship_art_geometry(collection, materials, dimensions, config, language))
+    elif config.ship_type == "racing_ship":
+        objects.extend(_create_racing_ship_art_geometry(collection, materials, dimensions, config, language))
+    elif config.ship_type == "luxury_yacht":
+        objects.extend(_create_luxury_yacht_art_geometry(collection, materials, dimensions, config, language))
+    elif config.ship_type == "boss_capital_ship":
+        objects.extend(_create_boss_capital_art_geometry(collection, materials, dimensions, config, language))
+    else:
+        objects.extend(_create_generic_art_geometry(collection, materials, dimensions, config, language))
+
+    objects.extend(_create_advanced_variant_geometry(collection, materials, dimensions, _ship_variation(config), config))
+    objects.extend(_create_faction_geometry_language(collection, materials, dimensions, rng, config, language))
+    objects.extend(_create_universal_surface_geometry(collection, materials, dimensions, config, language))
+    return objects
+
+
+def _create_light_raider_art_geometry(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+    rng: random.Random,
+    config: ShipGenerationConfig,
+    language: DesignLanguage,
+) -> list[bpy.types.Object]:
+    length, width, height = dimensions["length"], dimensions["width"], dimensions["height"]
+    armor_density = _density(config, config.armor_layer_density, "secondary")
+    objects = [
+        _tapered_prism(collection, "MESH_Raider_Blade_Prow_Cowl", (0.0, -length * 0.48, height * 0.10), length * 0.13, width * 0.040, width * 0.15, height * 0.035, height * 0.090, materials["armor_top"], bevel=0.009),
+        _tapered_prism(collection, "MESH_Raider_Engine_Saddle", (0.0, length * 0.36, height * 0.08), length * 0.20, width * 0.12, width * 0.23, height * 0.045, height * 0.080, materials["engine_shell"], bevel=0.010),
+    ]
+    for side in (-1, 1):
+        objects.append(_hard_airfoil_plate(collection, f"MESH_Raider_Clipped_Aggressor_Fin_{_side_name(side)}", [(side * width * 0.38, length * 0.03), (side * width * 0.72, length * 0.12), (side * width * 0.78, length * 0.30), (side * width * 0.44, length * 0.24)], -height * 0.05, height * 0.038, materials["wing_edge"]))
+        objects.append(_tapered_prism(collection, f"MESH_Raider_Wing_Root_Fairing_{_side_name(side)}", (side * width * 0.22, -length * 0.08, height * 0.02), length * 0.20, width * 0.032, width * 0.070, height * 0.035, height * 0.055, materials["body_panel"], bevel=0.008))
+        if armor_density > 0.40:
+            objects.append(_box(collection, f"MESH_Raider_Patched_Armor_{_side_name(side)}", (side * width * 0.15, -length * (0.10 + rng.random() * 0.10), height * 0.38), (width * 0.070, length * 0.060, height * 0.025), materials["armor_top"], bevel=0.005))
+        objects.extend(create_engine_nacelle(collection, f"MESH_Raider_Exposed_Overdrive_{_side_name(side)}", (side * width * 0.31, length * 0.43, -height * 0.05), length * 0.24, width * 0.080, height * 0.135, materials, complexity=config.engine_complexity))
+    return objects
+
+
+def _create_interceptor_art_geometry(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+    config: ShipGenerationConfig,
+    language: DesignLanguage,
+) -> list[bpy.types.Object]:
+    length, width, height = dimensions["length"], dimensions["width"], dimensions["height"]
+    objects = [
+        _tapered_prism(collection, "MESH_Interceptor_Long_Nose_Fairing", (0.0, -length * 0.54, height * 0.00), length * 0.18, width * 0.025, width * 0.080, height * 0.025, height * 0.060, materials["body_panel"], bevel=0.006),
+        _raised_strip_y(collection, "MESH_Interceptor_Recessed_Dorsal_Cutline", (0.0, -length * 0.08, height * 0.36), length * 0.38, width * 0.012, height * 0.010, materials["panel"]),
+    ]
+    for side in (-1, 1):
+        objects.append(_hard_airfoil_plate(collection, f"MESH_Interceptor_Aero_Canard_{_side_name(side)}", [(side * width * 0.10, -length * 0.43), (side * width * 0.32, -length * 0.39), (side * width * 0.40, -length * 0.25), (side * width * 0.13, -length * 0.29)], height * 0.005, height * 0.026, materials["wing_edge"]))
+        objects.extend(create_engine_nacelle(collection, f"MESH_Interceptor_Vector_Nacelle_{_side_name(side)}", (side * width * 0.20, length * 0.46, -height * 0.02), length * 0.32, width * 0.095, height * 0.165, materials, complexity=config.engine_complexity))
+    return objects
+
+
+def _create_gunship_art_geometry(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+    config: ShipGenerationConfig,
+    language: DesignLanguage,
+) -> list[bpy.types.Object]:
+    length, width, height = dimensions["length"], dimensions["width"], dimensions["height"]
+    objects = [
+        _tapered_prism(collection, "MESH_Gunship_Reinforced_Forward_Belt", (0.0, -length * 0.30, height * 0.16), length * 0.18, width * 0.18, width * 0.31, height * 0.060, height * 0.095, materials["armor_top"], bevel=0.012),
+        *_create_turret_row(collection, materials, "Gunship_Dorsal", length, width, height, [(-0.12, 0.58), (0.18, 0.52)], radius=width * 0.055),
+    ]
+    for side in (-1, 1):
+        x = side * width * 0.45
+        objects.append(_tapered_prism(collection, f"MESH_Gunship_Boxed_Sponson_Fairing_{_side_name(side)}", (x, -length * 0.02, height * 0.02), length * 0.28, width * 0.045, width * 0.075, height * 0.075, height * 0.115, materials["weapon"], bevel=0.010))
+        objects.extend(create_recessed_panel(collection, f"MESH_Gunship_Sponson_Service_Panel_{_side_name(side)}", (x + side * width * 0.08, length * 0.05, height * 0.04), (width * 0.08, length * 0.22, height * 0.11), materials, orientation="side_left" if side < 0 else "side_right"))
+    return objects
+
+
+def _create_boarding_frigate_art_geometry(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+    config: ShipGenerationConfig,
+    language: DesignLanguage,
+) -> list[bpy.types.Object]:
+    length, width, height = dimensions["length"], dimensions["width"], dimensions["height"]
+    objects = [
+        _tapered_prism(collection, "MESH_Boarding_Ram_Layered_Prow", (0.0, -length * 0.56, -height * 0.02), length * 0.16, width * 0.055, width * 0.20, height * 0.060, height * 0.135, materials["armor_top"], bevel=0.010),
+        _box(collection, "MESH_Boarding_Dorsal_Crew_Block", (0.0, length * 0.10, height * 0.39), (width * 0.18, length * 0.22, height * 0.090), materials["system_bay"], bevel=0.010),
+    ]
+    for side in (-1, 1):
+        objects.extend(create_side_bay(collection, f"MESH_Boarding_Docking_Maw_{_side_name(side)}", (side * width * 0.50, -length * 0.04, height * 0.02), side, (width * 0.06, length * 0.20, height * 0.13), materials))
+        objects.append(_raised_strip_y(collection, f"MESH_Boarding_Grapple_Track_{_side_name(side)}", (side * width * 0.14, -length * 0.44, height * 0.04), length * 0.20, width * 0.018, height * 0.012, materials["weapon"]))
+    return objects
+
+
+def _create_missile_corvette_art_geometry(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+    config: ShipGenerationConfig,
+    language: DesignLanguage,
+) -> list[bpy.types.Object]:
+    length, width, height = dimensions["length"], dimensions["width"], dimensions["height"]
+    objects = [
+        _tapered_prism(collection, "MESH_Corvette_Torpedo_Bow_Fairing", (0.0, -length * 0.52, -height * 0.02), length * 0.12, width * 0.070, width * 0.18, height * 0.045, height * 0.095, materials["ordnance"], bevel=0.008),
+    ]
+    for index, x_offset in enumerate((-0.065, 0.065), start=1):
+        objects.append(_weapon_barrel(collection, f"MESH_Corvette_Recessed_Torpedo_Tube_{index:02d}", (width * x_offset, -length * 0.64, -height * 0.025), width * 0.018, length * 0.12, materials["weapon"]))
+    for side in (-1, 1):
+        objects.extend(create_side_bay(collection, f"MESH_Corvette_Integrated_Missile_Bay_{_side_name(side)}", (side * width * 0.43, length * 0.04, height * 0.09), side, (width * 0.12, length * 0.34, height * 0.19), materials))
+        objects.extend(create_vent_array(collection, f"MESH_Corvette_VLS_Cell_Row_{_side_name(side)}", (side * width * 0.18, length * 0.04, height * 0.67), 4, length * 0.075, (width * 0.045, length * 0.020, height * 0.018), materials["ordnance"], axis="y"))
+    return objects
+
+
+def _create_freighter_art_geometry(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+    config: ShipGenerationConfig,
+    language: DesignLanguage,
+) -> list[bpy.types.Object]:
+    length, width, height = dimensions["length"], dimensions["width"], dimensions["height"]
+    objects = [
+        _tapered_prism(collection, "MESH_Freighter_Load_Bearing_Spine", (0.0, length * 0.06, -height * 0.12), length * 0.56, width * 0.055, width * 0.095, height * 0.055, height * 0.085, materials["underbody"], bevel=0.007),
+        _box(collection, "MESH_Freighter_Bridge_Cab_Frame", (-width * 0.10, -length * 0.39, height * 0.49), (width * 0.12, length * 0.09, height * 0.060), materials["body_panel"], bevel=0.007),
+    ]
+    for side in (-1, 1):
+        objects.append(_raised_strip_y(collection, f"MESH_Freighter_Loading_Rail_{_side_name(side)}", (side * width * 0.25, length * 0.08, height * 0.08), length * 0.52, width * 0.016, height * 0.016, materials["wear"]))
+        objects.extend(create_engine_nacelle(collection, f"MESH_Freighter_Tug_Nacelle_{_side_name(side)}", (side * width * 0.20, length * 0.52, -height * 0.02), length * 0.18, width * 0.070, height * 0.135, materials, complexity=config.engine_complexity))
+    return objects
+
+
+def _create_heavy_cruiser_art_geometry(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+    config: ShipGenerationConfig,
+    language: DesignLanguage,
+) -> list[bpy.types.Object]:
+    length, width, height = dimensions["length"], dimensions["width"], dimensions["height"]
+    objects = [
+        *create_armor_terrace(collection, "MESH_Cruiser_Dorsal_Armor_Terrace", (0.0, -length * 0.02, height * 0.64), (width * 0.33, length * 0.34, height * 0.10), materials, levels=3),
+        *_create_turret_row(collection, materials, "Cruiser_Turret_Deck", length, width, height, [(-0.24, 0.76), (0.04, 0.82), (0.28, 0.70)], radius=width * 0.060),
+        *create_engine_nozzle_cluster(collection, "MESH_Cruiser_Main_Engine_Cluster", (0.0, length * 0.63, -height * 0.04), 4, 1, width * 0.040, width * 0.14, height * 0.08, length * 0.08, materials),
+    ]
+    for side in (-1, 1):
+        objects.append(_tapered_prism(collection, f"MESH_Cruiser_Broad_Armor_Belt_{_side_name(side)}", (side * width * 0.40, length * 0.02, height * 0.12), length * 0.40, width * 0.045, width * 0.070, height * 0.090, height * 0.130, materials["armor_top"], bevel=0.012))
+        objects.extend(create_side_bay(collection, f"MESH_Cruiser_Weapon_Gallery_Recess_{_side_name(side)}", (side * width * 0.50, -length * 0.05, height * 0.02), side, (width * 0.070, length * 0.30, height * 0.14), materials))
+    return objects
+
+
+def _create_mining_ship_art_geometry(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+    config: ShipGenerationConfig,
+    language: DesignLanguage,
+) -> list[bpy.types.Object]:
+    length, width, height = dimensions["length"], dimensions["width"], dimensions["height"]
+    objects = [
+        _tapered_prism(collection, "MESH_Mining_Forward_Tool_Frame", (0.0, -length * 0.48, -height * 0.05), length * 0.18, width * 0.060, width * 0.17, height * 0.050, height * 0.105, materials["weapon"], bevel=0.007),
+        _box(collection, "MESH_Mining_Ventral_Processing_Tray", (0.0, length * 0.12, -height * 0.42), (width * 0.21, length * 0.26, height * 0.070), materials["system_bay"], bevel=0.008),
+    ]
+    for side in (-1, 1):
+        objects.extend(create_radiator_fin_array(collection, f"MESH_Mining_Radiator_Rack_{_side_name(side)}", (side * width * 0.30, length * 0.12, height * 0.16), side, 4, length * 0.11, width * 0.18, height * 0.020, materials["engine_shell"]))
+        objects.append(_rounded_pod(collection, f"MESH_Mining_Faceted_Ore_Pod_{_side_name(side)}", (side * width * 0.38, length * 0.22, -height * 0.08), length * 0.22, width * 0.080, height * 0.120, materials["cargo"]))
+    return objects
+
+
+def _create_salvage_ship_art_geometry(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+    config: ShipGenerationConfig,
+    language: DesignLanguage,
+) -> list[bpy.types.Object]:
+    length, width, height = dimensions["length"], dimensions["width"], dimensions["height"]
+    side = -1 if _stable_int_seed(config.seed, config.variant, "salvage_art") % 2 == 0 else 1
+    objects = [
+        _box(collection, "MESH_Salvage_Open_Mechanical_Rib_Deck", (side * width * 0.18, length * 0.08, height * 0.10), (width * 0.12, length * 0.28, height * 0.045), materials["underbody"], bevel=0.006),
+        _rounded_pod(collection, "MESH_Salvage_Asym_Recovery_Drum", (-side * width * 0.32, length * 0.26, -height * 0.08), length * 0.20, width * 0.080, height * 0.115, materials["cargo"]),
+    ]
+    for index, y_factor in enumerate((-0.14, 0.02, 0.18), start=1):
+        objects.append(_box(collection, f"MESH_Salvage_Exposed_Rib_{index:02d}", (side * width * 0.26, length * y_factor, height * 0.18), (width * 0.018, length * 0.045, height * 0.125), materials["wear"], bevel=0.004))
+    return objects
+
+
+def _create_medical_ship_art_geometry(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+    config: ShipGenerationConfig,
+    language: DesignLanguage,
+) -> list[bpy.types.Object]:
+    length, width, height = dimensions["length"], dimensions["width"], dimensions["height"]
+    objects = [
+        _rounded_pod(collection, "MESH_Medical_Integrated_Rescue_Lounge", (0.0, -length * 0.18, height * 0.38), length * 0.16, width * 0.115, height * 0.070, materials["glass"]),
+        _box(collection, "MESH_Medical_Clean_Dorsal_Support_Module", (0.0, length * 0.10, height * 0.45), (width * 0.14, length * 0.18, height * 0.060), materials["body_panel"], bevel=0.010),
+    ]
+    for side in (-1, 1):
+        objects.append(_raised_strip_y(collection, f"MESH_Medical_Emergency_Light_Rail_{_side_name(side)}", (side * width * 0.18, -length * 0.18, height * 0.48), length * 0.10, width * 0.010, height * 0.010, materials["glow"]))
+    return objects
+
+
+def _create_racing_ship_art_geometry(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+    config: ShipGenerationConfig,
+    language: DesignLanguage,
+) -> list[bpy.types.Object]:
+    length, width, height = dimensions["length"], dimensions["width"], dimensions["height"]
+    objects = [
+        _tapered_prism(collection, "MESH_Racer_Aero_Needle_Cowl", (0.0, -length * 0.50, height * 0.02), length * 0.16, width * 0.024, width * 0.070, height * 0.022, height * 0.050, materials["body_panel"], bevel=0.006),
+        _raised_strip_y(collection, "MESH_Racer_Premium_Dorsal_Strake", (0.0, length * 0.04, height * 0.31), length * 0.30, width * 0.014, height * 0.014, materials["accent"]),
+    ]
+    for side in (-1, 1):
+        objects.extend(create_engine_nacelle(collection, f"MESH_Racer_High_Output_Nacelle_{_side_name(side)}", (side * width * 0.24, length * 0.46, -height * 0.02), length * 0.34, width * 0.085, height * 0.145, materials, complexity=max(config.engine_complexity, 0.85)))
+    return objects
+
+
+def _create_luxury_yacht_art_geometry(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+    config: ShipGenerationConfig,
+    language: DesignLanguage,
+) -> list[bpy.types.Object]:
+    length, width, height = dimensions["length"], dimensions["width"], dimensions["height"]
+    objects = [
+        _smooth_spine(collection, "MESH_Yacht_Elegant_Dorsal_Swan_Spine", length * 0.90, width * 0.70, height * 0.76, materials["body_panel"]),
+        *create_bridge_window_strip(collection, "MESH_Yacht_Panoramic_Window_Strip", (0.0, -length * 0.32, height * 0.48), width * 0.70, 7, materials),
+    ]
+    for side in (-1, 1):
+        objects.extend(create_engine_nacelle(collection, f"MESH_Yacht_Flush_Designer_Nacelle_{_side_name(side)}", (side * width * 0.26, length * 0.42, -height * 0.02), length * 0.22, width * 0.060, height * 0.105, materials, complexity=config.engine_complexity * 0.8))
+    return objects
+
+
+def _create_boss_capital_art_geometry(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+    config: ShipGenerationConfig,
+    language: DesignLanguage,
+) -> list[bpy.types.Object]:
+    length, width, height = dimensions["length"], dimensions["width"], dimensions["height"]
+    objects = [
+        *create_armor_terrace(collection, "MESH_Capital_Command_Citadel_Terrace", (0.0, -length * 0.04, height * 0.78), (width * 0.25, length * 0.28, height * 0.13), materials, levels=5),
+        *create_armor_terrace(collection, "MESH_Capital_Aft_Bastion_Terrace", (0.0, length * 0.24, height * 0.66), (width * 0.32, length * 0.30, height * 0.12), materials, levels=4),
+        _tapered_prism(collection, "MESH_Capital_Ventral_Cathedral_Keel", (0.0, length * 0.04, -height * 0.64), length * 0.50, width * 0.060, width * 0.16, height * 0.110, height * 0.220, materials["underbody"], bevel=0.014),
+        *create_engine_nozzle_cluster(collection, "MESH_Capital_Broad_Engine_Bank", (0.0, length * 0.70, -height * 0.04), 5, 2, width * 0.034, width * 0.13, height * 0.18, length * 0.075, materials),
+        *_create_turret_row(collection, materials, "Capital_Dorsal_Turret_Deck", length, width, height, [(-0.36, 0.74), (-0.16, 0.92), (0.08, 0.88), (0.32, 0.72)], radius=width * 0.055),
+    ]
+    for side in (-1, 1):
+        objects.append(_tapered_prism(collection, f"MESH_Capital_Side_Armor_Terrace_{_side_name(side)}", (side * width * 0.40, length * 0.04, height * 0.22), length * 0.46, width * 0.050, width * 0.105, height * 0.135, height * 0.205, materials["armor_top"], bevel=0.016))
+        objects.extend(create_hangar_bay(collection, f"MESH_Capital_Hangar_Bay_{_side_name(side)}", (side * width * 0.54, -length * 0.06, -height * 0.06), side, (width * 0.075, length * 0.36, height * 0.22), materials))
+        objects.extend(create_side_bay(collection, f"MESH_Capital_Missile_Casemate_{_side_name(side)}", (side * width * 0.50, length * 0.28, height * 0.10), side, (width * 0.060, length * 0.22, height * 0.16), materials))
+        objects.extend(create_radiator_fin_array(collection, f"MESH_Capital_Aft_Radiator_Fan_{_side_name(side)}", (side * width * 0.30, length * 0.46, height * 0.30), side, 5, length * 0.085, width * 0.16, height * 0.020, materials["engine_shell"]))
+    return objects
+
+
+def _create_generic_art_geometry(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+    config: ShipGenerationConfig,
+    language: DesignLanguage,
+) -> list[bpy.types.Object]:
+    length, width, height = dimensions["length"], dimensions["width"], dimensions["height"]
+    return [
+        _tapered_prism(collection, "MESH_Generic_Designed_Dorsal_Fairing", (0.0, length * 0.02, height * 0.42), length * 0.22, width * 0.065, width * 0.13, height * 0.040, height * 0.075, materials["body_panel"], bevel=0.008),
+        _raised_strip_y(collection, "MESH_Generic_Center_Service_Run", (0.0, length * 0.08, height * 0.52), length * 0.30, width * 0.016, height * 0.012, materials["panel"]),
+    ]
+
+
+def _create_turret_row(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    prefix: str,
+    length: float,
+    width: float,
+    height: float,
+    placements: list[tuple[float, float]],
+    *,
+    radius: float,
+) -> list[bpy.types.Object]:
+    objects: list[bpy.types.Object] = []
+    for index, (y_factor, z_factor) in enumerate(placements, start=1):
+        objects.extend(create_turret_base(collection, f"MESH_{prefix}_{index:02d}", (0.0, length * y_factor, height * z_factor), radius, height * 0.10, materials))
+    return objects
+
+
+def _create_universal_surface_geometry(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+    config: ShipGenerationConfig,
+    language: DesignLanguage,
+) -> list[bpy.types.Object]:
+    surface_density = _density(config, config.surface_geometry_density, "tertiary")
+    panel_density = _density(config, config.panel_geometry_density, "tertiary")
+    armor_density = _density(config, config.armor_layer_density, "secondary")
+    if surface_density <= 0.08 and panel_density <= 0.08 and armor_density <= 0.08:
+        return []
+
+    length, width, height = dimensions["length"], dimensions["width"], dimensions["height"]
+    objects: list[bpy.types.Object] = []
+    top_slots = (-0.32, -0.14, 0.08, 0.30)
+    panel_count = max(1, min(len(top_slots), round(1 + panel_density * 3)))
+    for index, y_factor in enumerate(top_slots[:panel_count], start=1):
+        y = length * y_factor
+        objects.extend(create_recessed_panel(collection, f"MESH_Surface_Dorsal_Recess_{index:02d}", (0.0, y, _hull_top_z(length, width, height, 0.0, y, clearance=height * 0.045)), (width * 0.20, length * 0.10, height * 0.035), materials))
+    if surface_density > 0.35:
+        for side in (-1, 1):
+            for index, y_factor in enumerate((-0.24, 0.10, 0.34), start=1):
+                y = length * y_factor
+                x = side * width * 0.34
+                objects.extend(create_vent_array(collection, f"MESH_Surface_Side_Vent_{_side_name(side)}_{index:02d}", (x, y, _hull_side_z(length, width, height, x, y, clearance=height * 0.05)), 4, length * 0.018, (width * 0.012, length * 0.008, height * 0.045), materials["panel"], axis="y"))
+    if armor_density > 0.40 and config.ship_type not in {"racing_ship", "luxury_yacht"}:
+        for side in (-1, 1):
+            y = length * 0.02
+            x = side * width * 0.20
+            objects.append(_tapered_prism(collection, f"MESH_Surface_Overlapping_Armor_Belt_{_side_name(side)}", (x, y, _hull_top_z(length, width, height, x, y, clearance=height * 0.06)), length * 0.22, width * 0.055, width * 0.082, height * 0.032, height * 0.052, materials["armor_top"], bevel=0.008))
+    return objects
+
+
+def _create_faction_geometry_language(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+    rng: random.Random,
+    config: ShipGenerationConfig,
+    language: DesignLanguage,
+) -> list[bpy.types.Object]:
+    influence = _density(config, config.faction_geometry_influence, "secondary")
+    if influence <= 0.08:
+        return []
+
+    length, width, height = dimensions["length"], dimensions["width"], dimensions["height"]
+    objects: list[bpy.types.Object] = []
+    if config.faction == "pirate_clan":
+        for index in range(2):
+            side = -1 if (index + config.seed) % 2 == 0 else 1
+            y = length * (-0.20 + 0.22 * index)
+            objects.append(_box(collection, f"MESH_Faction_Pirate_Field_Repair_Plate_{index + 1:02d}", (side * width * 0.19, y, _hull_top_z(length, width, height, side * width * 0.19, y, clearance=height * 0.070)), (width * 0.075, length * 0.060, height * 0.024), materials["wear"], bevel=0.004))
+    elif config.faction == "sector_navy":
+        objects.append(_raised_strip_y(collection, "MESH_Faction_Navy_Organized_Command_Strake", (0.0, -length * 0.02, height * 0.58), length * 0.34, width * 0.018, height * 0.014, materials["accent"]))
+    elif config.faction == "trade_consortium":
+        for side in (-1, 1):
+            objects.append(_raised_strip_y(collection, f"MESH_Faction_Trade_Loading_Index_Rail_{_side_name(side)}", (side * width * 0.31, length * 0.12, height * 0.18), length * 0.26, width * 0.012, height * 0.012, materials["accent"]))
+    elif config.faction == "mining_guild":
+        for side in (-1, 1):
+            objects.extend(create_radiator_fin_array(collection, f"MESH_Faction_Mining_Hazard_Radiator_{_side_name(side)}", (side * width * 0.38, length * 0.28, height * 0.03), side, 3, length * 0.08, width * 0.12, height * 0.016, materials["ordnance"]))
+    elif config.faction == "smuggler_network":
+        for side in (-1, 1):
+            objects.extend(create_recessed_panel(collection, f"MESH_Faction_Smuggler_Concealed_Bay_{_side_name(side)}", (side * width * 0.36, length * 0.08, _hull_side_z(length, width, height, side * width * 0.36, length * 0.08, clearance=height * 0.04)), (width * 0.08, length * 0.16, height * 0.10), materials, orientation="side_left" if side < 0 else "side_right"))
+    elif config.faction == "corporate_security":
+        objects.append(_box(collection, "MESH_Faction_Corporate_Clean_Dorsal_Nameplate", (0.0, -length * 0.18, height * 0.54), (width * 0.16, length * 0.050, height * 0.016), materials["accent"], bevel=0.003))
+    elif config.faction == "ancient_relic":
+        objects.append(_torus_y(collection, "MESH_Faction_Relic_Integrated_Ring_Core", (0.0, length * 0.20, height * 0.20), width * 0.22, width * 0.010, materials["glow"]))
+        for side in (-1, 1):
+            objects.append(_hard_airfoil_plate(collection, f"MESH_Faction_Relic_Crescent_Arch_{_side_name(side)}", [(side * width * 0.18, -length * 0.06), (side * width * 0.46, length * 0.02), (side * width * 0.48, length * 0.28), (side * width * 0.20, length * 0.20)], height * 0.28, height * 0.025, materials["glow"]))
+    return objects
+
+
+def _create_advanced_variant_geometry(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+    variation: ShipVariation,
+    config: ShipGenerationConfig,
+) -> list[bpy.types.Object]:
+    length, width, height = dimensions["length"], dimensions["width"], dimensions["height"]
+    objects: list[bpy.types.Object] = []
+    if variation.key in {"arrowhead", "military_wedge"}:
+        objects.append(_plate_prism(collection, "MESH_Variant_Arrowhead_Dorsal_Shell", [(-width * 0.10, -length * 0.46), (width * 0.10, -length * 0.46), (width * 0.38, length * 0.18), (0.0, length * 0.46), (-width * 0.38, length * 0.18)], height * 0.48, height * 0.035, materials["armor_top"], bevel=0.010))
+    elif variation.key in {"manta", "crescent"}:
+        for side in (-1, 1):
+            objects.append(_hard_airfoil_plate(collection, f"MESH_Variant_Manta_Crescent_Wing_{_side_name(side)}", [(side * width * 0.16, -length * 0.10), (side * width * 0.62, -length * 0.04), (side * width * 0.76, length * 0.22), (side * width * 0.30, length * 0.28)], -height * 0.04, height * 0.050, materials["wing"]))
+    elif variation.key in {"split_nose", "forked_prow"}:
+        for side in (-1, 1):
+            objects.append(_tapered_prism(collection, f"MESH_Variant_Split_Prow_{_side_name(side)}", (side * width * 0.09, -length * 0.55, -height * 0.01), length * 0.16, width * 0.035, width * 0.080, height * 0.035, height * 0.070, materials["body_panel"], bevel=0.007))
+    elif variation.key in {"needle", "dagger"}:
+        objects.append(_tapered_prism(collection, "MESH_Variant_Dagger_Nose_Extension", (0.0, -length * 0.60, height * 0.00), length * 0.18, width * 0.020, width * 0.060, height * 0.020, height * 0.050, materials["body_panel"], bevel=0.005))
+    elif variation.key == "hammerhead_refined":
+        objects.append(_tapered_prism(collection, "MESH_Variant_Refined_Hammerhead_Brow", (0.0, -length * 0.42, height * 0.08), length * 0.060, width * 0.34, width * 0.46, height * 0.040, height * 0.070, materials["body_panel"], bevel=0.010))
+    elif variation.key in {"cathedral_capital", "armored_citadel"}:
+        objects.extend(create_armor_terrace(collection, "MESH_Variant_Cathedral_Citadel", (0.0, length * 0.02, height * 0.72), (width * 0.20, length * 0.26, height * 0.12), materials, levels=4))
+    elif variation.key == "carrier_spine":
+        for index, y_factor in enumerate((-0.26, -0.06, 0.14, 0.34), start=1):
+            objects.extend(create_hangar_bay(collection, f"MESH_Variant_Carrier_Spine_Bay_{index:02d}", (width * 0.42, length * y_factor, -height * 0.02), 1, (width * 0.060, length * 0.11, height * 0.12), materials))
+            objects.extend(create_hangar_bay(collection, f"MESH_Variant_Carrier_Spine_Bay_Mirror_{index:02d}", (-width * 0.42, length * y_factor, -height * 0.02), -1, (width * 0.060, length * 0.11, height * 0.12), materials))
+    elif variation.key == "luxury_swan":
+        objects.append(_smooth_spine(collection, "MESH_Variant_Luxury_Swan_Back", length * 0.82, width * 0.64, height * 0.70, materials["body_panel"]))
+    elif variation.key == "industrial_frame":
+        for side in (-1, 1):
+            objects.append(_raised_strip_y(collection, f"MESH_Variant_Industrial_Outer_Frame_{_side_name(side)}", (side * width * 0.42, length * 0.06, -height * 0.04), length * 0.44, width * 0.020, height * 0.020, materials["underbody"]))
+    elif variation.key == "asym_salvage":
+        side = -1 if _stable_int_seed(config.seed, config.variant, "asym_salvage") % 2 == 0 else 1
+        objects.append(_rounded_pod(collection, f"MESH_Variant_Asym_Salvage_Processing_Pod_{_side_name(side)}", (side * width * 0.50, length * 0.12, -height * 0.08), length * 0.20, width * 0.080, height * 0.120, materials["cargo"]))
+    elif variation.key == "ring_engine":
+        objects.append(_torus_y(collection, "MESH_Variant_Ring_Engine_Frame", (0.0, length * 0.54, 0.0), width * 0.26, width * 0.018, materials["engine_shell"]))
+    elif variation.key == "tri_engine":
+        objects.extend(create_engine_nozzle_cluster(collection, "MESH_Variant_Tri_Engine", (0.0, length * 0.61, -height * 0.02), 3, 1, width * 0.040, width * 0.15, height * 0.10, length * 0.070, materials))
+    elif variation.key == "wide_nacelle":
+        for side in (-1, 1):
+            objects.extend(create_engine_nacelle(collection, f"MESH_Variant_Wide_Nacelle_{_side_name(side)}", (side * width * 0.42, length * 0.44, -height * 0.04), length * 0.24, width * 0.090, height * 0.145, materials, complexity=max(config.engine_complexity, 0.75)))
+    elif variation.key == "blade_wing":
+        for side in (-1, 1):
+            objects.append(_hard_airfoil_plate(collection, f"MESH_Variant_Blade_Wing_{_side_name(side)}", [(side * width * 0.18, -length * 0.20), (side * width * 0.72, -length * 0.06), (side * width * 0.82, length * 0.18), (side * width * 0.26, length * 0.24)], -height * 0.08, height * 0.045, materials["wing_edge"]))
+    elif variation.key == "deep_keel":
+        objects.append(_tapered_prism(collection, "MESH_Variant_Deep_Architectural_Keel", (0.0, length * 0.08, -height * 0.58), length * 0.46, width * 0.050, width * 0.130, height * 0.080, height * 0.170, materials["underbody"], bevel=0.010))
+    elif variation.key == "railgun_spine":
+        objects.append(_tapered_prism(collection, "MESH_Variant_Railgun_Dorsal_Spine", (0.0, -length * 0.16, height * 0.66), length * 0.38, width * 0.030, width * 0.065, height * 0.030, height * 0.060, materials["weapon"], bevel=0.006))
+    return objects
+
+
+def evaluate_visual_quality(
+    objects: list[bpy.types.Object],
+    dimensions: dict[str, float],
+    config: ShipGenerationConfig,
+) -> dict[str, Any]:
+    names = [obj.name for obj in objects if obj.name.startswith("MESH_")]
+    length = dimensions["length"]
+    width = dimensions["width"]
+    height = dimensions["height"]
+    slab_ratio = height / max(width, 0.001)
+    capital = config.ship_type == "boss_capital_ship"
+
+    feature_counts = {
+        "mesh": len(names),
+        "armor": sum(1 for name in names if "Armor" in name or "Terrace" in name or "Belt" in name),
+        "engine": sum(1 for name in names if "Engine" in name or "Nacelle" in name or "Nozzle" in name),
+        "bridge": sum(1 for name in names if "Bridge" in name or "Command" in name or "Citadel" in name or "Cockpit" in name or "Canopy" in name),
+        "panel": sum(1 for name in names if "Panel" in name or "Recess" in name or "Hatch" in name or "Vent" in name),
+        "bay": sum(1 for name in names if "Bay" in name or "Hangar" in name or "Casemate" in name),
+        "turret": sum(1 for name in names if "Turret" in name or "Weapon_Gallery" in name),
+        "keel": sum(1 for name in names if "Keel" in name),
+    }
+    score = 0.0
+    score += min(feature_counts["mesh"] / (120 if capital else 72), 1.0) * 0.20
+    score += min(feature_counts["armor"] / (12 if capital else 5), 1.0) * 0.18
+    score += min(feature_counts["engine"] / (14 if capital else 5), 1.0) * 0.16
+    score += min(feature_counts["bridge"] / (8 if capital else 2), 1.0) * 0.14
+    score += min(feature_counts["panel"] / (18 if capital else 7), 1.0) * 0.14
+    score += min(feature_counts["bay"] / (6 if capital else 2), 1.0) * 0.10
+    score += min(feature_counts["turret"] / (5 if capital else 2), 1.0) * 0.08
+    if slab_ratio > 0.24 or not config.avoid_boxy_shapes:
+        score += 0.10
+
+    if capital:
+        passes = (
+            feature_counts["mesh"] >= 115
+            and feature_counts["armor"] >= 10
+            and feature_counts["engine"] >= 12
+            and feature_counts["bridge"] >= 6
+            and feature_counts["bay"] >= 4
+            and feature_counts["turret"] >= 4
+            and feature_counts["keel"] >= 1
+            and slab_ratio > 0.20
+        )
+    else:
+        passes = (
+            feature_counts["mesh"] >= 48
+            and feature_counts["engine"] >= 3
+            and feature_counts["bridge"] >= 1
+            and feature_counts["panel"] >= 4
+            and (slab_ratio > 0.16 or config.silhouette_bias in {"sleek", "racing"})
+        )
+
+    return {
+        "passes": passes,
+        "score": min(score, 1.0),
+        "feature_counts": feature_counts,
+        "slab_ratio": slab_ratio,
+        "length_width_ratio": length / max(width, 0.001),
+    }
+
+
+def validate_silhouette(objects: list[bpy.types.Object], dimensions: dict[str, float], config: ShipGenerationConfig) -> bool:
+    return bool(evaluate_visual_quality(objects, dimensions, config)["passes"])
+
+
+def ensure_non_boxy_design(objects: list[bpy.types.Object], dimensions: dict[str, float], config: ShipGenerationConfig) -> bool:
+    report = evaluate_visual_quality(objects, dimensions, config)
+    return bool(report["passes"] and report["slab_ratio"] > 0.16)
+
+
+def ensure_connected_detail(objects: list[bpy.types.Object], dimensions: dict[str, float], config: ShipGenerationConfig) -> bool:
+    report = evaluate_visual_quality(objects, dimensions, config)
+    return report["feature_counts"]["panel"] >= (10 if config.ship_type == "boss_capital_ship" else 4)
+
+
+def ensure_class_features(objects: list[bpy.types.Object], dimensions: dict[str, float], config: ShipGenerationConfig) -> bool:
+    report = evaluate_visual_quality(objects, dimensions, config)
+    if config.ship_type == "boss_capital_ship":
+        return report["feature_counts"]["bay"] >= 4 and report["feature_counts"]["turret"] >= 4
+    return report["feature_counts"]["engine"] >= 3 and report["feature_counts"]["bridge"] >= 1
+
+
+def _create_visual_quality_rescue_geometry(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+    config: ShipGenerationConfig,
+    quality_report: dict[str, Any],
+) -> list[bpy.types.Object]:
+    length, width, height = dimensions["length"], dimensions["width"], dimensions["height"]
+    objects: list[bpy.types.Object] = []
+    if config.ship_type == "boss_capital_ship":
+        objects.extend(create_armor_terrace(collection, "MESH_QualityRescue_Capital_Armor_Terrace", (0.0, -length * 0.08, height * 0.92), (width * 0.30, length * 0.30, height * 0.14), materials, levels=5))
+        objects.extend(create_engine_nozzle_cluster(collection, "MESH_QualityRescue_Capital_Engine_Cluster", (0.0, length * 0.74, -height * 0.02), 5, 2, width * 0.036, width * 0.13, height * 0.16, length * 0.070, materials))
+        objects.extend(_create_turret_row(collection, materials, "QualityRescue_Capital_Turret", length, width, height, [(-0.38, 0.78), (-0.18, 0.95), (0.10, 0.88), (0.36, 0.72)], radius=width * 0.055))
+        for side in (-1, 1):
+            objects.extend(create_hangar_bay(collection, f"MESH_QualityRescue_Capital_Hangar_{_side_name(side)}", (side * width * 0.56, -length * 0.02, -height * 0.05), side, (width * 0.080, length * 0.34, height * 0.22), materials))
+            objects.append(_tapered_prism(collection, f"MESH_QualityRescue_Capital_Silhouette_Wing_{_side_name(side)}", (side * width * 0.48, length * 0.10, height * 0.08), length * 0.46, width * 0.040, width * 0.12, height * 0.100, height * 0.18, materials["body_panel"], bevel=0.014))
+    else:
+        objects.extend(create_armor_terrace(collection, "MESH_QualityRescue_Dorsal_Designed_Terrace", (0.0, length * 0.02, height * 0.55), (width * 0.18, length * 0.22, height * 0.090), materials, levels=3))
+        for side in (-1, 1):
+            objects.extend(create_engine_nacelle(collection, f"MESH_QualityRescue_Integrated_Nacelle_{_side_name(side)}", (side * width * 0.27, length * 0.46, -height * 0.04), length * 0.22, width * 0.070, height * 0.120, materials, complexity=0.85))
+            objects.extend(create_recessed_panel(collection, f"MESH_QualityRescue_Side_Recess_{_side_name(side)}", (side * width * 0.36, length * 0.04, _hull_side_z(length, width, height, side * width * 0.36, length * 0.04, clearance=height * 0.04)), (width * 0.070, length * 0.18, height * 0.10), materials, orientation="side_left" if side < 0 else "side_right"))
+    return objects
 
 
 def _create_role_features(
@@ -3406,8 +4641,567 @@ def _create_designer_detail_layer(
     height = dimensions["height"]
     objects: list[bpy.types.Object] = []
 
+    objects.extend(_create_command_block_visual_layer(collection, materials, dimensions, config))
     objects.extend(_create_teal_light_strips(collection, materials, length, width, height, config))
     objects.extend(_create_engine_cable_runs(collection, materials, length, width, height))
+    return objects
+
+
+def _create_command_block_visual_layer(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    dimensions: dict[str, float],
+    config: ShipGenerationConfig,
+) -> list[bpy.types.Object]:
+    density = max(0.0, min(1.0, config.structure_density))
+    if density <= 0.05:
+        return []
+
+    length = dimensions["length"]
+    width = dimensions["width"]
+    height = dimensions["height"]
+    engine = dimensions["engine"]
+    tier_bonus = 1 if config.detail_level in {"high", "hero"} else 0
+    objects: list[bpy.types.Object] = []
+
+    if config.ship_type == "missile_corvette":
+        objects.extend(
+            _command_tower_visuals(
+                collection,
+                materials,
+                "Corvette",
+                (0.0, length * 0.02, height * 0.71),
+                (width * 0.16, length * 0.24, height * 0.12),
+                tiers=2 + tier_bonus,
+                mast_count=2,
+            )
+        )
+        objects.extend(
+            _block_module_visuals(
+                collection,
+                materials,
+                "Corvette_OrdnanceDeck",
+                (0.0, length * 0.12, height * 0.585),
+                (width * 0.37, length * 0.34, height * 0.05),
+                hatches=4,
+                side_clamps=True,
+            )
+        )
+        for side in (-1, 1):
+            objects.extend(
+                _block_module_visuals(
+                    collection,
+                    materials,
+                    f"Corvette_OrdnanceBay_{_side_name(side)}",
+                    (side * width * 0.45, length * 0.06, height * 0.07),
+                    (width * 0.12, length * 0.31, height * 0.20),
+                    hatches=3,
+                    side_clamps=False,
+                )
+            )
+
+    elif config.ship_type == "gunship":
+        objects.extend(
+            _command_tower_visuals(
+                collection,
+                materials,
+                "Gunship",
+                (0.0, -length * 0.22, height * 0.49),
+                (width * 0.15, length * 0.11, height * 0.095),
+                tiers=1 + tier_bonus,
+                mast_count=1,
+            )
+        )
+
+    elif config.ship_type == "boarding_frigate":
+        objects.extend(
+            _command_tower_visuals(
+                collection,
+                materials,
+                "Boarding",
+                (0.0, -length * 0.20, height * 0.52),
+                (width * 0.16, length * 0.12, height * 0.10),
+                tiers=2 + tier_bonus,
+                mast_count=1,
+            )
+        )
+        objects.extend(
+            _block_module_visuals(
+                collection,
+                materials,
+                "Boarding_Nose",
+                (0.0, -length * 0.50, -height * 0.02),
+                (width * 0.18, length * 0.10, height * 0.12),
+                hatches=2,
+                side_clamps=True,
+            )
+        )
+
+    elif config.ship_type == "heavy_cruiser":
+        objects.extend(
+            _command_tower_visuals(
+                collection,
+                materials,
+                "Cruiser",
+                (0.0, -length * 0.05, height * 0.70),
+                (width * 0.17, length * 0.17, height * 0.12),
+                tiers=3 + tier_bonus,
+                mast_count=3,
+            )
+        )
+        objects.extend(
+            _block_module_visuals(
+                collection,
+                materials,
+                "Cruiser_Reactor",
+                (0.0, length * 0.46, -height * 0.02),
+                (width * 0.32, length * 0.13, height * 0.24 * engine),
+                hatches=3,
+                side_clamps=True,
+            )
+        )
+
+    elif config.ship_type == "boss_capital_ship":
+        objects.extend(
+            _command_tower_visuals(
+                collection,
+                materials,
+                "Capital_Primary",
+                (0.0, -length * 0.05, height * 0.70),
+                (width * 0.18, length * 0.18, height * 0.13),
+                tiers=4,
+                mast_count=4,
+            )
+        )
+        objects.extend(
+            _command_tower_visuals(
+                collection,
+                materials,
+                "Capital_Aft",
+                (0.0, length * 0.20, height * 0.78),
+                (width * 0.22, length * 0.22, height * 0.15),
+                tiers=4,
+                mast_count=3,
+            )
+        )
+        objects.extend(
+            _block_module_visuals(
+                collection,
+                materials,
+                "Capital_Habitat",
+                (0.0, -length * 0.30, height * 0.38),
+                (width * 0.24, length * 0.18, height * 0.13),
+                hatches=5,
+                side_clamps=True,
+            )
+        )
+
+    elif config.ship_type == "freighter":
+        objects.extend(
+            _command_tower_visuals(
+                collection,
+                materials,
+                "Freighter_Cab",
+                (-width * 0.10, -length * 0.39, height * 0.47),
+                (width * 0.12, length * 0.10, height * 0.095),
+                tiers=1 + tier_bonus,
+                mast_count=1,
+            )
+        )
+        objects.extend(
+            _block_module_visuals(
+                collection,
+                materials,
+                "Freighter_Tug",
+                (0.0, length * 0.50, -height * 0.02),
+                (width * 0.27, length * 0.13, height * 0.24 * engine),
+                hatches=3,
+                side_clamps=True,
+            )
+        )
+        cargo_slots = max(2, min(4, round(2 + config.cargo_density * 2)))
+        cargo_y_slots = (-0.26, -0.06, 0.16, 0.36)
+        for side in (-1, 1):
+            for index, y_factor in enumerate(cargo_y_slots[:cargo_slots], start=1):
+                objects.extend(
+                    _cargo_block_visuals(
+                        collection,
+                        materials,
+                        f"Freighter_Cargo_{_side_name(side)}_{index:02d}",
+                        (side * width * 0.37, length * y_factor, -height * 0.04),
+                        (width * 0.14, length * 0.080, height * 0.21),
+                        side,
+                    )
+                )
+
+    elif config.ship_type == "patrol_cutter":
+        objects.extend(
+            _command_tower_visuals(
+                collection,
+                materials,
+                "Cutter",
+                (0.0, -length * 0.06, height * 0.53),
+                (width * 0.16, length * 0.13, height * 0.095),
+                tiers=2 + tier_bonus,
+                mast_count=2,
+            )
+        )
+
+    elif config.ship_type in {"explorer", "medical_ship", "luxury_yacht"}:
+        prefix = {"explorer": "Explorer", "medical_ship": "Medical", "luxury_yacht": "Yacht"}[config.ship_type]
+        center_y = -length * (0.30 if config.ship_type != "luxury_yacht" else 0.18)
+        center_z = height * (0.40 if config.ship_type != "luxury_yacht" else 0.46)
+        objects.extend(
+            _command_tower_visuals(
+                collection,
+                materials,
+                prefix,
+                (0.0, center_y, center_z),
+                (width * 0.13, length * 0.11, height * 0.075),
+                tiers=1 + tier_bonus,
+                mast_count=1,
+                civilian=True,
+            )
+        )
+
+    elif config.ship_type in {"mining_ship", "salvage_ship"}:
+        prefix = "Mining" if config.ship_type == "mining_ship" else "Salvage"
+        side = 0.0 if config.ship_type == "mining_ship" else (-1 if _stable_int_seed(config.seed, config.variant, "salvage_base") % 2 == 0 else 1) * width * 0.10
+        objects.extend(
+            _command_tower_visuals(
+                collection,
+                materials,
+                prefix,
+                (side, -length * 0.32, height * 0.36),
+                (width * 0.12, length * 0.095, height * 0.080),
+                tiers=1 + tier_bonus,
+                mast_count=1,
+            )
+        )
+
+    return objects
+
+
+def _command_tower_visuals(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    prefix: str,
+    center: tuple[float, float, float],
+    scale: tuple[float, float, float],
+    *,
+    tiers: int,
+    mast_count: int,
+    civilian: bool = False,
+) -> list[bpy.types.Object]:
+    x, y, z = center
+    sx, sy, sz = scale
+    objects: list[bpy.types.Object] = []
+    body_material = materials["system_bay"] if not civilian else materials["body_panel"]
+    trim_material = materials["armor_top"] if not civilian else materials["accent"]
+
+    objects.append(
+        _tapered_prism(
+            collection,
+            f"MESH_Command_{prefix}_Lower_Gallery",
+            (x, y + sy * 0.06, z - sz * 0.14),
+            sy * 0.68,
+            sx * 0.82,
+            sx * 1.08,
+            sz * 0.34,
+            sz * 0.48,
+            body_material,
+            bevel=max(min(sx, sz) * 0.055, 0.004),
+        )
+    )
+    objects.append(
+        _box(
+            collection,
+            f"MESH_Command_{prefix}_Bridge_Brow",
+            (x, y - sy * 0.80, z + sz * 0.34),
+            (sx * 0.86, sy * 0.13, sz * 0.18),
+            trim_material,
+            bevel=max(min(sx, sz) * 0.045, 0.0035),
+        )
+    )
+    objects.append(
+        _box(
+            collection,
+            f"MESH_Command_{prefix}_Rear_Service_Crown",
+            (x, y + sy * 0.34, z + sz * 0.58),
+            (sx * 0.68, sy * 0.38, sz * 0.16),
+            body_material,
+            bevel=max(min(sx, sz) * 0.040, 0.003),
+        )
+    )
+
+    for tier_index in range(max(1, tiers)):
+        tier_scale = 1.0 - tier_index * 0.16
+        tier_y = y + sy * (-0.30 + tier_index * 0.28)
+        tier_z = z + sz * (0.74 + tier_index * 0.22)
+        objects.append(
+            _tapered_prism(
+                collection,
+                f"MESH_Command_{prefix}_Tier_{tier_index + 1:02d}",
+                (x, tier_y, tier_z),
+                sy * (0.24 + 0.035 * tier_index),
+                sx * (0.48 * tier_scale),
+                sx * (0.62 * tier_scale),
+                sz * 0.11,
+                sz * 0.15,
+                body_material if tier_index % 2 == 0 else trim_material,
+                bevel=max(min(sx, sz) * 0.035, 0.0028),
+            )
+        )
+
+    front_y = y - sy - sy * 0.035
+    window_count = 5 if sx < 0.55 else 7
+    for index in range(window_count):
+        offset = (index - (window_count - 1) * 0.5) / max(window_count - 1, 1)
+        objects.append(
+            _box(
+                collection,
+                f"MESH_Command_{prefix}_Front_Window_{index + 1:02d}",
+                (x + offset * sx * 0.96, front_y, z + sz * 0.44),
+                (sx * 0.060, sy * 0.016, sz * 0.060),
+                materials["window"],
+                bevel=max(min(sx, sz) * 0.018, 0.0016),
+            )
+        )
+    objects.append(
+        _box(
+            collection,
+            f"MESH_Command_{prefix}_Window_Upper_Frame",
+            (x, front_y - sy * 0.010, z + sz * 0.56),
+            (sx * 0.62, sy * 0.012, sz * 0.018),
+            materials["panel"],
+            bevel=max(min(sx, sz) * 0.014, 0.0014),
+        )
+    )
+    objects.append(
+        _box(
+            collection,
+            f"MESH_Command_{prefix}_Window_Lower_Frame",
+            (x, front_y - sy * 0.010, z + sz * 0.30),
+            (sx * 0.70, sy * 0.012, sz * 0.020),
+            materials["panel"],
+            bevel=max(min(sx, sz) * 0.014, 0.0014),
+        )
+    )
+
+    for side in (-1, 1):
+        side_x = x + side * (sx + sx * 0.045)
+        objects.append(
+            _tapered_prism(
+                collection,
+                f"MESH_Command_{prefix}_Side_Buttress_{_side_name(side)}",
+                (side_x, y + sy * 0.10, z - sz * 0.03),
+                sy * 0.58,
+                sx * 0.055,
+                sx * 0.085,
+                sz * 0.34,
+                sz * 0.47,
+                trim_material,
+                bevel=max(min(sx, sz) * 0.030, 0.0025),
+            )
+        )
+        for index, y_offset in enumerate((-0.35, 0.05, 0.40), start=1):
+            objects.append(
+                _box(
+                    collection,
+                    f"MESH_Command_{prefix}_Side_Window_{_side_name(side)}_{index:02d}",
+                    (side_x + side * sx * 0.025, y + sy * y_offset, z + sz * 0.28),
+                    (sx * 0.018, sy * 0.070, sz * 0.043),
+                    materials["window"],
+                    bevel=max(min(sx, sz) * 0.014, 0.0012),
+                )
+            )
+        objects.append(
+            _raised_strip_y(
+                collection,
+                f"MESH_Command_{prefix}_Roof_Service_Run_{_side_name(side)}",
+                (x + side * sx * 0.34, y + sy * 0.16, z + sz * (1.02 + 0.12 * max(tiers - 1, 0))),
+                sy * 0.56,
+                sx * 0.030,
+                sz * 0.030,
+                materials["panel"],
+            )
+        )
+
+    mast_slots = (-0.36, 0.0, 0.36, 0.18)
+    for index in range(max(0, mast_count)):
+        mast_x = x + mast_slots[index % len(mast_slots)] * sx
+        mast_y = y + sy * (0.24 + 0.16 * (index % 2))
+        mast_height = sz * (1.40 if index == 0 else 0.92)
+        objects.append(
+            _antenna(
+                collection,
+                f"MESH_Command_{prefix}_Sensor_Mast_{index + 1:02d}",
+                (mast_x, mast_y, z + sz * (1.35 + 0.10 * tiers)),
+                max(sx * 0.020, 0.004),
+                mast_height,
+                materials["weapon"],
+            )
+        )
+        objects.append(
+            _box(
+                collection,
+                f"MESH_Command_{prefix}_Mast_Base_{index + 1:02d}",
+                (mast_x, mast_y, z + sz * (1.02 + 0.10 * tiers)),
+                (sx * 0.065, sy * 0.055, sz * 0.050),
+                trim_material,
+                bevel=max(min(sx, sz) * 0.020, 0.0018),
+            )
+        )
+
+    return objects
+
+
+def _block_module_visuals(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    prefix: str,
+    center: tuple[float, float, float],
+    scale: tuple[float, float, float],
+    *,
+    hatches: int,
+    side_clamps: bool,
+) -> list[bpy.types.Object]:
+    x, y, z = center
+    sx, sy, sz = scale
+    objects: list[bpy.types.Object] = []
+    top_z = z + sz
+    front_y = y - sy
+    rear_y = y + sy
+    hatch_count = max(1, hatches)
+
+    for index in range(hatch_count):
+        offset = (index - (hatch_count - 1) * 0.5) / max(hatch_count - 1, 1)
+        hatch_y = y + offset * sy * 1.28
+        objects.append(
+            _box(
+                collection,
+                f"MESH_Module_{prefix}_Top_Hatch_{index + 1:02d}",
+                (x, hatch_y, top_z + sz * 0.035),
+                (sx * 0.54, sy * 0.090, sz * 0.020),
+                materials["panel"] if index % 2 else materials["system_bay"],
+                bevel=max(min(sx, sz) * 0.018, 0.0018),
+            )
+        )
+        objects.append(
+            _raised_strip_y(
+                collection,
+                f"MESH_Module_{prefix}_Raised_Run_{index + 1:02d}",
+                (x + sx * (0.34 if index % 2 else -0.34), hatch_y, top_z + sz * 0.070),
+                sy * 0.095,
+                sx * 0.020,
+                sz * 0.020,
+                materials["wear"],
+            )
+        )
+
+    for index, x_offset in enumerate((-0.52, -0.18, 0.18, 0.52), start=1):
+        objects.append(
+            _box(
+                collection,
+                f"MESH_Module_{prefix}_Forward_Lock_{index:02d}",
+                (x + sx * x_offset, front_y - sy * 0.030, z + sz * 0.26),
+                (sx * 0.060, sy * 0.022, sz * 0.090),
+                materials["underbody"],
+                bevel=max(min(sx, sz) * 0.014, 0.0014),
+            )
+        )
+        objects.append(
+            _box(
+                collection,
+                f"MESH_Module_{prefix}_Rear_Lock_{index:02d}",
+                (x + sx * x_offset, rear_y + sy * 0.030, z + sz * 0.20),
+                (sx * 0.052, sy * 0.020, sz * 0.072),
+                materials["underbody"],
+                bevel=max(min(sx, sz) * 0.014, 0.0014),
+            )
+        )
+
+    if side_clamps:
+        for side in (-1, 1):
+            side_x = x + side * (sx + sx * 0.030)
+            objects.append(
+                _box(
+                    collection,
+                    f"MESH_Module_{prefix}_Side_Frame_{_side_name(side)}",
+                    (side_x, y, z + sz * 0.10),
+                    (sx * 0.030, sy * 0.74, sz * 0.090),
+                    materials["body_panel"],
+                    bevel=max(min(sx, sz) * 0.014, 0.0014),
+                )
+            )
+            for y_offset in (-0.48, 0.48):
+                objects.append(
+                    _tapered_prism(
+                        collection,
+                        f"MESH_Module_{prefix}_Corner_Brace_{_side_name(side)}_{'Front' if y_offset < 0 else 'Rear'}",
+                        (side_x, y + sy * y_offset, z + sz * 0.16),
+                        sy * 0.11,
+                        sx * 0.030,
+                        sx * 0.052,
+                        sz * 0.090,
+                        sz * 0.120,
+                        materials["engine_shell"],
+                        bevel=max(min(sx, sz) * 0.016, 0.0016),
+                    )
+                )
+
+    return objects
+
+
+def _cargo_block_visuals(
+    collection: bpy.types.Collection,
+    materials: dict[str, bpy.types.Material],
+    prefix: str,
+    center: tuple[float, float, float],
+    scale: tuple[float, float, float],
+    side: int,
+) -> list[bpy.types.Object]:
+    x, y, z = center
+    sx, sy, sz = scale
+    outer_x = x + side * (sx + sx * 0.035)
+    top_z = z + sz
+    objects = [
+        _box(
+            collection,
+            f"MESH_Cargo_{prefix}_Outer_Latch",
+            (outer_x, y, z + sz * 0.08),
+            (sx * 0.035, sy * 0.62, sz * 0.10),
+            materials["underbody"],
+            bevel=max(min(sx, sz) * 0.014, 0.0014),
+        ),
+        _box(
+            collection,
+            f"MESH_Cargo_{prefix}_Top_Lock_Front",
+            (x, y - sy * 0.46, top_z + sz * 0.032),
+            (sx * 0.58, sy * 0.055, sz * 0.018),
+            materials["wear"],
+            bevel=max(min(sx, sz) * 0.012, 0.0012),
+        ),
+        _box(
+            collection,
+            f"MESH_Cargo_{prefix}_Top_Lock_Rear",
+            (x, y + sy * 0.46, top_z + sz * 0.032),
+            (sx * 0.58, sy * 0.055, sz * 0.018),
+            materials["wear"],
+            bevel=max(min(sx, sz) * 0.012, 0.0012),
+        ),
+    ]
+    for index, y_offset in enumerate((-0.30, 0.0, 0.30), start=1):
+        objects.append(
+            _box(
+                collection,
+                f"MESH_Cargo_{prefix}_Side_Index_{index:02d}",
+                (outer_x + side * sx * 0.020, y + sy * y_offset, z + sz * 0.48),
+                (sx * 0.018, sy * 0.050, sz * 0.045),
+                materials["accent"] if index == 2 else materials["panel"],
+                bevel=max(min(sx, sz) * 0.010, 0.001),
+            )
+        )
     return objects
 
 
@@ -3523,8 +5317,8 @@ def _torus_y(
     minor_radius: float,
     material: bpy.types.Material,
 ) -> bpy.types.Object:
-    major_segments = 18
-    minor_segments = 6
+    major_segments = 48
+    minor_segments = 12
     vertices: list[tuple[float, float, float]] = []
     for major_index in range(major_segments):
         major_angle = 2.0 * pi * major_index / major_segments
@@ -3548,8 +5342,8 @@ def _torus_y(
                     major_index * minor_segments + next_minor,
                 )
             )
-    obj = _mesh_object(collection, name, vertices, faces, material, location=location, bevel=max(minor_radius * 0.08, 0.0015))
-    obj["void_shipwright_surface_style"] = "faceted_ring"
+    obj = _mesh_object(collection, name, vertices, faces, material, location=location, bevel=max(minor_radius * 0.12, 0.002), smooth=True)
+    obj["void_shipwright_surface_style"] = "beveled_high_segment_ring"
     return obj
 
 
@@ -3561,7 +5355,7 @@ def _antenna(
     height: float,
     material: bpy.types.Material,
 ) -> bpy.types.Object:
-    segments = 6
+    segments = 16
     vertices: list[tuple[float, float, float]] = []
     for z, ring_radius in ((-height * 0.5, radius * 1.2), (height * 0.5, radius * 0.72)):
         for index in range(segments):
@@ -3570,7 +5364,7 @@ def _antenna(
     faces: list[tuple[int, ...]] = [tuple(reversed(range(segments))), tuple(range(segments, segments * 2))]
     for index in range(segments):
         faces.append((index, (index + 1) % segments, ((index + 1) % segments) + segments, index + segments))
-    obj = _mesh_object(collection, name, vertices, faces, material, location=location, bevel=max(radius * 0.10, 0.001))
+    obj = _mesh_object(collection, name, vertices, faces, material, location=location, bevel=max(radius * 0.16, 0.0018), smooth=True)
     obj.rotation_euler[0] = pi * 0.08
     obj["void_shipwright_surface_style"] = "faceted_sensor_mast"
     return obj
@@ -3599,9 +5393,24 @@ def _mesh_object(
     if smooth:
         for polygon in obj.data.polygons:
             polygon.use_smooth = True
-    _add_surface_modifiers(obj, bevel=bevel, subdivision=subdivision)
+    _add_surface_modifiers(obj, bevel=_visual_bevel_width(obj, bevel), subdivision=subdivision)
     obj["void_shipwright_texture_uv"] = "VS_PaintedUV"
     return obj
+
+
+def _visual_bevel_width(obj: bpy.types.Object, requested: float) -> float:
+    if not obj.name.startswith("MESH_"):
+        return requested
+    if obj.name.startswith("COLLISION_"):
+        return requested
+    dimensions = obj.dimensions
+    non_zero = [value for value in (dimensions.x, dimensions.y, dimensions.z) if value > 0.0001]
+    if not non_zero:
+        return max(requested, VISUAL_BEVEL_MIN)
+    auto_width = min(non_zero) * VISUAL_AUTO_BEVEL_RATIO
+    if requested > 0.0:
+        auto_width = max(auto_width, requested * 1.35)
+    return _clamp(max(requested, auto_width, VISUAL_BEVEL_MIN), VISUAL_BEVEL_MIN, VISUAL_BEVEL_MAX)
 
 
 def _assign_box_projected_uvs(mesh: bpy.types.Mesh) -> None:
@@ -3649,7 +5458,7 @@ def _curve_path(
     curve.dimensions = "3D"
     curve.resolution_u = resolution
     curve.bevel_depth = bevel_depth
-    curve.bevel_resolution = 2
+    curve.bevel_resolution = 4
     curve.materials.append(material)
     spline = curve.splines.new("POLY")
     spline.points.add(len(points) - 1)
@@ -3674,7 +5483,7 @@ def _add_surface_modifiers(
     if bevel > 0.0:
         modifier = obj.modifiers.new("VS_Bevel", "BEVEL")
         modifier.width = bevel
-        modifier.segments = 3 if bevel >= 0.01 else 2
+        modifier.segments = 7 if bevel >= 0.024 else 5 if bevel >= 0.010 else 3
         modifier.profile = 0.45
         modifier.affect = "EDGES"
         if hasattr(modifier, "harden_normals"):
@@ -3697,6 +5506,13 @@ def _show_technical_helpers(objects: list[Any]) -> None:
         if not obj.name.startswith("MESH_"):
             obj.hide_viewport = False
             obj.hide_render = obj.name.startswith("COLLISION_")
+
+
+def _show_hardpoint_helpers(objects: list[Any]) -> None:
+    for obj in objects:
+        if obj.name.startswith("SOCKET_HP_"):
+            obj.hide_viewport = False
+            obj.hide_render = False
 
 
 def _setup_presentation_scene(collection: bpy.types.Collection, dimensions: dict[str, float]) -> None:
@@ -3773,8 +5589,9 @@ def _create_collision_proxies(collection: bpy.types.Collection, dimensions: dict
     return objects
 
 
-def _create_damage_markers(collection: bpy.types.Collection, dimensions: dict[str, float]) -> list[bpy.types.Object]:
+def _create_damage_markers(collection: bpy.types.Collection, dimensions: dict[str, float], subsystem_layout: list[dict[str, Any]]) -> list[bpy.types.Object]:
     length = dimensions["length"]
+    width = dimensions["width"]
     height = dimensions["height"]
     locations = {
         "DAMAGE_Hull": (0.0, 0.0, 0.0),
@@ -3783,16 +5600,27 @@ def _create_damage_markers(collection: bpy.types.Collection, dimensions: dict[st
         "DAMAGE_Cargo": (0.0, length * 0.14, -height * 0.12),
         "DAMAGE_Bridge": (0.0, -length * 0.15, height * 0.46),
         "DAMAGE_Shield_Generator": (0.0, 0.04 * length, height * 0.22),
+        "DAMAGE_Power_Plant": (0.0, length * 0.20, height * 0.02),
+        "DAMAGE_Cooler": (-width * 0.18, length * 0.28, height * 0.04),
+        "DAMAGE_Life_Support": (width * 0.18, -length * 0.02, height * 0.18),
+        "DAMAGE_Scanner": (0.0, -length * 0.28, height * 0.52),
+        "DAMAGE_Boarding_Defense": (width * 0.34, -length * 0.02, height * 0.02),
     }
+    subsystem_by_name = {item["name"]: item for item in subsystem_layout}
     objects = []
-    for name in REQUIRED_DAMAGE_MARKERS:
+    for name in (*REQUIRED_DAMAGE_MARKERS, *SUBSYSTEM_DAMAGE_MARKERS):
         obj = _create_empty(collection, name, locations[name], display_type="SPHERE")
         obj["void_shipwright_kind"] = "damage_zone_marker"
+        if name in subsystem_by_name:
+            subsystem = subsystem_by_name[name]
+            obj["void_shipwright_subsystem"] = subsystem["subsystem"]
+            obj["void_shipwright_damage_multiplier"] = subsystem["damage_multiplier"]
+            obj["void_shipwright_critical_threshold"] = subsystem["critical_threshold"]
         objects.append(obj)
     return objects
 
 
-def _create_sockets(collection: bpy.types.Collection, dimensions: dict[str, float]) -> list[bpy.types.Object]:
+def _create_sockets(collection: bpy.types.Collection, dimensions: dict[str, float], hardpoints: list[dict[str, Any]]) -> list[bpy.types.Object]:
     length = dimensions["length"]
     width = dimensions["width"]
     height = dimensions["height"]
@@ -3816,6 +5644,16 @@ def _create_sockets(collection: bpy.types.Collection, dimensions: dict[str, floa
     for name in REQUIRED_SOCKETS:
         obj = _create_empty(collection, name, locations[name], display_type="ARROWS")
         obj["void_shipwright_kind"] = "socket"
+        objects.append(obj)
+    for hardpoint in hardpoints:
+        name = hardpoint["visual_socket_name"]
+        if name in locations:
+            continue
+        obj = _create_empty(collection, name, tuple(hardpoint["position"]), display_type="CUBE")
+        obj["void_shipwright_kind"] = "hardpoint_socket"
+        obj["void_shipwright_hardpoint_type"] = hardpoint["type"]
+        obj["void_shipwright_hardpoint_size"] = hardpoint["size"]
+        obj["void_shipwright_hardpoint_name"] = hardpoint["name"]
         objects.append(obj)
     return objects
 

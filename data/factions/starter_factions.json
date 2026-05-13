@@ -1,0 +1,12 @@
+{
+  "factions": [
+    {"id": "pirate_clan", "preferred_grades": ["pirate", "military"], "role_tags": ["combat", "raider"]},
+    {"id": "sector_navy", "preferred_grades": ["military"], "role_tags": ["combat", "patrol"]},
+    {"id": "trade_consortium", "preferred_grades": ["civilian", "industrial"], "role_tags": ["cargo", "civilian"]},
+    {"id": "mining_guild", "preferred_grades": ["industrial"], "role_tags": ["industrial", "mining"]},
+    {"id": "smuggler_network", "preferred_grades": ["pirate", "stealth"], "role_tags": ["stealth", "cargo"]},
+    {"id": "corporate_security", "preferred_grades": ["military", "civilian"], "role_tags": ["combat", "security"]},
+    {"id": "ancient_relic", "preferred_grades": ["ancient"], "role_tags": ["ancient", "boss"]},
+    {"id": "independent", "preferred_grades": ["civilian", "industrial"], "role_tags": ["civilian"]}
+  ]
+}

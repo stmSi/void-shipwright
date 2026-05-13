@@ -68,6 +68,8 @@ def _object_box_size(obj: Any) -> list[float]:
 
 
 def _socket_type(name: str) -> str:
+    if name.startswith("SOCKET_HP_"):
+        return "hardpoint"
     if name.startswith("SOCKET_Weapon_"):
         return "weapon"
     if name.startswith("SOCKET_Missile_"):
@@ -159,6 +161,13 @@ def build_metadata(
     seed: int,
     variant: str,
     objects: Iterable[Any],
+    ship_frame: str | None = None,
+    frame_definition: dict[str, Any] | None = None,
+    hardpoints: list[dict[str, Any]] | None = None,
+    component_slots: list[dict[str, Any]] | None = None,
+    equipment_recommendations: dict[str, Any] | None = None,
+    performance_baseline: dict[str, Any] | None = None,
+    subsystem_layout: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     validate_role(role)
     validate_faction(faction)
@@ -185,8 +194,39 @@ def build_metadata(
         },
         **sections,
     }
+    if ship_frame is not None:
+        metadata["ship_frame"] = ship_frame
+    if frame_definition is not None:
+        metadata["ship_frame_definition"] = frame_definition
+    if hardpoints is not None:
+        metadata["hardpoints"] = hardpoints
+    if component_slots is not None:
+        metadata["component_slots"] = component_slots
+    if equipment_recommendations is not None:
+        metadata["equipment_recommendations"] = equipment_recommendations
+    if performance_baseline is not None:
+        metadata["performance_baseline"] = performance_baseline
+    if subsystem_layout is not None:
+        _apply_subsystem_layout_to_damage_zones(metadata["damage_zones"], subsystem_layout)
+        metadata["subsystem_layout"] = subsystem_layout
     validate_metadata_contract(metadata)
     return metadata
+
+
+def _apply_subsystem_layout_to_damage_zones(
+    damage_zones: list[dict[str, Any]],
+    subsystem_layout: list[dict[str, Any]],
+) -> None:
+    subsystem_by_name = {entry["name"]: entry for entry in subsystem_layout if "name" in entry}
+    for zone in damage_zones:
+        subsystem = subsystem_by_name.get(zone["name"])
+        if subsystem is None:
+            continue
+        zone["subsystem"] = subsystem["subsystem"]
+        zone["damage_multiplier"] = subsystem["damage_multiplier"]
+        zone["critical_threshold"] = subsystem["critical_threshold"]
+        zone["linked_hardpoints"] = list(subsystem["linked_hardpoints"])
+        zone["linked_components"] = list(subsystem["linked_components"])
 
 
 def validate_metadata_contract(metadata: dict[str, Any]) -> None:
